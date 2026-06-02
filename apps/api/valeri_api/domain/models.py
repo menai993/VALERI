@@ -189,6 +189,9 @@ class Invoice(Base):
     )
     date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    # Invoice number in the source ERP (broj fakture) — the natural key for
+    # idempotent imports (M2, spec decision D1).
+    external_no: Mapped[str | None] = mapped_column(Text)
 
     customer: Mapped[Customer] = relationship(back_populates="invoices")
     lines: Mapped[list["InvoiceLine"]] = relationship(back_populates="invoice")

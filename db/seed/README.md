@@ -13,7 +13,21 @@ uv run python -m valeri_api.seed --reset       # truncate core.* and load fresh
 ```
 
 Options: `--as-of YYYY-MM-DD` (reference date, default today) · `--rng-seed N`
-(default 20260601) · `--manifest-out PATH`.
+(default 20260601) · `--manifest-out PATH` · `--export-dir PATH` (also write the
+ERP-style CSV export).
+
+## ERP-style export (the M2 ingest input)
+
+```bash
+uv run python -m valeri_api.seed --reset --export-dir /tmp/uh-export
+```
+
+Writes 4 files with Bosnian headers, `;` delimiter, UTF-8, **external codes only**
+(no internal IDs, no contact PII): `kupci.csv` (sifra, naziv, jib, naziv_pravnog_lica,
+segment, status, komercijalista) · `artikli.csv` (sifra, naziv, kategorija, aktivan) ·
+`fakture.csv` (broj_fakture, sifra_kupca, datum, ukupno) · `stavke.csv` (broj_fakture,
+sifra_artikla, kolicina, cijena, iznos). This is exactly what
+`python -m valeri_api.ingest` / `POST /api/ingest/import` consumes.
 
 The generation is **deterministic** for a given `(rng_seed, as_of)`: entity/article/customer
 IDs never change; only dates shift with `as_of`.

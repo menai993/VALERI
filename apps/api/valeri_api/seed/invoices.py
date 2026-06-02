@@ -193,6 +193,9 @@ def generate_invoices(
                 "customer_id": invoice["customer_id"],
                 "date": invoice["date"],
                 "total": invoice["total"],
+                # Source-ERP invoice number (broj fakture) — the natural key
+                # the M2 import matches on.
+                "external_no": f"FK-{invoice['date'].year}-{invoice_id:06d}",
             }
         )
         for line in raw_lines_by_invoice[idx]:

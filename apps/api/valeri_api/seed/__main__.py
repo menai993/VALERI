@@ -52,6 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="where to write the planted-cases manifest (default: db/seed/planted_cases.json)",
     )
+    parser.add_argument(
+        "--export-dir",
+        type=Path,
+        default=None,
+        help="also write the ERP-style CSV export (kupci/artikli/fakture/stavke) to this directory",
+    )
     args = parser.parse_args(argv)
 
     config = SeedConfig(rng_seed=args.rng_seed, as_of=args.as_of or datetime.date.today())
@@ -74,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Planted-cases manifest written to {manifest_path}")
     else:
         print("Repo db/ directory not found - manifest skipped (use --manifest-out to force).")
+
+    if args.export_dir is not None:
+        from valeri_api.seed.export import write_export_csvs
+
+        files = write_export_csvs(data, args.export_dir)
+        print(f"ERP-style export written: {', '.join(str(f) for f in files)}")
 
     print(
         f"Loaded: {len(data.legal_entities)} legal entities, {len(data.customers)} customers, "

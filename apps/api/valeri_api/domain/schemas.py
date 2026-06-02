@@ -76,6 +76,7 @@ class InvoiceRead(_Read):
     customer_id: int
     date: datetime.date
     total: Decimal
+    external_no: str | None
 
 
 class InvoiceLineRead(_Read):

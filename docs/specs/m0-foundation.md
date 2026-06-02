@@ -78,7 +78,8 @@ skeleton runs; everything else is deferred to M1+.
 │   ├── api/
 │   │   ├── pyproject.toml             (uv project; deps pinned)
 │   │   ├── uv.lock                    (committed lockfile)
-│   │   ├── Dockerfile
+│   │   ├── Dockerfile                 (targets: dev | dist — see D10)
+│   │   ├── build_ext.py               (Cython build for the dist target)
 │   │   ├── alembic.ini
 │   │   ├── migrations/
 │   │   │   ├── env.py
@@ -136,6 +137,7 @@ skeleton runs; everything else is deferred to M1+.
 | D7 | **Web container: multi-stage build → nginx:alpine static serve; Caddy proxies `/` → web, `/api` → api** | architecture.md: "web React/TS (Vite build) — served via the proxy". |
 | D8 | **`/api/health` reports app + db status** | Proves SQLAlchemy wiring, not just FastAPI. Returns 200 `{"status":"ok","db":"ok"}`; if DB unreachable, still 200 with `"db":"unavailable"` (the service is up; the dependency isn't). |
 | D9 | **CI uses a `postgres:16` service container** | So pytest + `alembic upgrade head` run against a real PostgreSQL 16, same as compose. |
+| D10 | **Source-protected client distribution** (added at plan review, 2026-06-02) | VALERI is sold as an on-prem product; clients must not be able to copy the backend source. Development stays in Python (the contracted stack — FastAPI/SQLAlchemy/LangGraph/LiteLLM are Python). The `apps/api/Dockerfile` gets two targets: `dev` (normal source, used by compose for development/pilot) and `dist` (all `valeri_api` code **compiled to native `.so` binaries via Cython**, `.py` sources stripped). Client deployments use `--target dist` images, which contain no readable VALERI source. The web bundle is already minified JS (no source shipped). Verified in acceptance: the dist image contains no `valeri_api/**/*.py` and still serves `/api/health`. |
 
 ## 5. Component specs
 
@@ -282,7 +284,12 @@ general_settings:
   version `0001_create_schemas` runs `CREATE SCHEMA IF NOT EXISTS staging/core/app/audit`
   (downgrade drops them).
 - **`Dockerfile`** — `python:3.12-slim`, uv install, non-root user; entrypoint runs
-  `alembic upgrade head` then `uvicorn`.
+  `alembic upgrade head` then `uvicorn`. Multi-stage with two final targets (D10):
+  - `dev` — source as-is; used by `infra/docker-compose.yml` (development/pilot).
+  - `dist` — `build_ext.py` Cython-compiles every `valeri_api/**/*.py` to a native `.so`
+    and strips the sources; the client image contains binaries only. Alembic migration
+    files remain readable (schema DDL is visible in the DB anyway; the business logic is
+    the protected IP).
 
 ### 5.9 `apps/web`
 
@@ -345,6 +352,8 @@ CI runs these against a real `postgres:16` service. Test client: `httpx` + FastA
 7. Lockfiles (`uv.lock`, `package-lock.json`) are committed.
 8. After implementation, the diff is reviewed against `docs/principles.md`
    (principle-reviewer) and violations reported.
+9. (D10) `docker build --target dist apps/api` produces an image with **no**
+   `valeri_api/**/*.py` files inside, and that image still serves `GET /api/health`.
 
 ## 9. Principles compliance (how M0 honors them)
 

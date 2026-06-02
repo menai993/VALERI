@@ -81,7 +81,9 @@ def test_money_columns_are_numeric(db_engine: Engine, db_session: Session) -> No
     assert (line_cols["line_total"].precision, line_cols["line_total"].scale) == (14, 2)
 
     # Round-trip a precise Decimal through the ORM and back.
-    entity = LegalEntity(name="Hotel Test d.o.o.", tax_id="4200000000001")
+    # tax_id deliberately outside the seed's "42000…" series to avoid collisions
+    # with committed seed data in the shared test database.
+    entity = LegalEntity(name="Hotel Test d.o.o.", tax_id="9999999999901")
     db_session.add(entity)
     db_session.flush()
     customer = Customer(legal_entity_id=entity.id, name="Hotel Test", segment="hotel")

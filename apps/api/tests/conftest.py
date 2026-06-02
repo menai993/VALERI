@@ -1,5 +1,6 @@
 """Shared test fixtures for the VALERI API test suite."""
 
+import os
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from valeri_api.config import get_settings
 from valeri_api.db import get_engine
 
 API_ROOT = Path(__file__).resolve().parent.parent
+
+# Tests never talk to a real LLM gateway: narration stays disabled unless a test
+# explicitly injects a (fake) client. The production default remains enabled.
+os.environ.setdefault("LLM_NARRATION_ENABLED", "false")
 
 
 @pytest.fixture

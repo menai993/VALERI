@@ -3,17 +3,29 @@
 All derivations (assignee, owner_cc ranking, due dates) come from SQL.
 The exactly-one invariant is enforced by flipping the signal to 'tasked' in the
 same transaction as the task insert: a re-run finds no 'new' signals.
+
+From M6, task bodies are LLM-narrated (masked input → validated output →
+rehydrated names); the M5 templates remain as the graceful fallback so the
+pipeline never fails because the language layer is down.
 """
 
 import datetime
+import logging
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from valeri_api.audit.task_log import log_task_event
+from valeri_api.config import get_settings
+from valeri_api.llm.client import LLMClient
+from valeri_api.llm.masking import rehydrate
+from valeri_api.llm.narration import narrate_task
+from valeri_api.llm.schemas import NarrationFailed
 from valeri_api.signals.models import Task
 from valeri_api.signals.schemas import TaskCreationResult
 from valeri_api.signals.templates import render_action, render_body, render_title
+
+logger = logging.getLogger("valeri.signals.pipeline")
 
 # New signals + everything needed to build their tasks, in one query:
 # customer name (for templates), the due date (signal date + configured offset,
@@ -26,6 +38,7 @@ SELECT s.id,
        s.evidence,
        s.created_at,
        c.name AS customer_name,
+       c.segment AS customer_segment,
        s.created_at::date + (rc.value::text)::int AS due_date
 FROM app.signal s
 LEFT JOIN core.customer c ON c.id = s.customer_id
@@ -48,9 +61,19 @@ LIMIT 10
 
 
 def create_tasks_from_signals(
-    session: Session, as_of: datetime.date | None = None
+    session: Session,
+    as_of: datetime.date | None = None,
+    client: LLMClient | None = None,
 ) -> TaskCreationResult:
-    """Turn every 'new' signal into exactly one open task (+ audit log entries)."""
+    """Turn every 'new' signal into exactly one open task (+ audit log entries).
+
+    Bodies/registers come from LLM narration when available; an explicitly
+    passed `client` always narrates, otherwise narration runs only when
+    `llm_narration_enabled` is set. Any narration failure falls back to the
+    deterministic Bosnian templates.
+    """
+    # An explicit client (tests, callers) always narrates; otherwise honor the setting.
+    narration_active = client is not None or get_settings().llm_narration_enabled
     current_rep = {
         row.customer_id: row.sales_rep_id for row in session.execute(text(_CURRENT_REPS_SQL))
     }
@@ -68,16 +91,44 @@ def create_tasks_from_signals(
             )
 
         context = {"customer_name": signal.customer_name or "nepoznat kupac"}
+
+        # ── body + register: LLM narration with template fallback (M6) ───────
+        body: str | None = None
+        register = "preporuka"
+        if narration_active:
+            try:
+                narrated = narrate_task(
+                    session,
+                    rule=signal.rule,
+                    evidence=signal.evidence,
+                    customer_id=signal.customer_id,
+                    customer_name=signal.customer_name,
+                    segment=signal.customer_segment,
+                    client=client,
+                )
+                # Rehydrate pseudonyms to real names — tasks are for humans.
+                body = rehydrate(narrated.narration.body, narrated.context)
+                register = narrated.narration.register
+            except NarrationFailed as failure:
+                logger.warning(
+                    "narration failed for signal %d (%s); falling back to template",
+                    signal.id,
+                    failure.reason,
+                )
+        if body is None:
+            body = render_body(signal.rule, signal.evidence, context)
+            register = "preporuka"
+
         task = Task(
             signal_id=signal.id,
             assignee_id=current_rep.get(signal.customer_id),
             owner_cc=signal.customer_id in top10_customers,
             title=render_title(signal.rule, context),
-            body=render_body(signal.rule, signal.evidence, context),
+            body=body,
             proposed_action=render_action(signal.rule),
             due_date=signal.due_date,
             status="open",
-            register="preporuka",
+            register=register,
         )
         session.add(task)
         session.flush()  # assign task.id

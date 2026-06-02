@@ -26,9 +26,10 @@ def scan_job() -> None:
             logger.exception("scheduled scan failed (rolled back)")
             return
     logger.info(
-        "scheduled scan done: %d new signals, %d suppressed",
+        "scheduled scan done: %d new signals, %d suppressed, %d tasks created",
         result.total_inserted,
         result.total_suppressed,
+        result.tasks_created,
     )
 
 

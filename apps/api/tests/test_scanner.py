@@ -42,7 +42,9 @@ def scanned_db(db_engine: Engine, seed_data):
         _reset_app_tables(session)
         reset(session)
         load(seed_data, session)
-        run_scan(session, as_of=as_of)  # includes the metrics recompute
+        run_scan(
+            session, as_of=as_of, create_tasks=False
+        )  # detection only (M5 tests the full flow)
         session.commit()
 
     yield db_engine, as_of, seed_data.manifest
@@ -153,7 +155,7 @@ def test_rescan_does_not_duplicate(scanned_db, seed_data) -> None:
         before = conn.execute(text("SELECT COUNT(*) FROM app.signal")).scalar()
 
     with Session(engine) as session:
-        result = run_scan(session, as_of=as_of, recompute=False)
+        result = run_scan(session, as_of=as_of, recompute=False, create_tasks=False)
         session.commit()
 
     with engine.connect() as conn:
@@ -205,7 +207,7 @@ def test_hand_inserted_learned_rule_suppresses_the_right_signal(db_engine, seed_
             },
         )
 
-        result = run_scan(session, as_of=as_of)
+        result = run_scan(session, as_of=as_of, create_tasks=False)
         session.commit()
 
     try:
@@ -223,7 +225,7 @@ def test_hand_inserted_learned_rule_suppresses_the_right_signal(db_engine, seed_
             session.execute(
                 text("UPDATE app.learned_rule SET expires_at = now() - interval '1 day'")
             )
-            rescan = run_scan(session, as_of=as_of, recompute=False)
+            rescan = run_scan(session, as_of=as_of, recompute=False, create_tasks=False)
             session.commit()
         decline_customers_after = {
             row.customer_id for row in _signals(db_engine, "customer_decline")

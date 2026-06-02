@@ -42,6 +42,7 @@ class ScanResult(BaseModel):
 
     as_of: datetime.date
     outcomes: dict[str, InsertOutcome]
+    tasks_created: int = 0
 
     @property
     def total_inserted(self) -> int:
@@ -57,8 +58,13 @@ def run_scan(
     as_of: datetime.date | None = None,
     recompute: bool = True,
     rules: list[ModuleType] | None = None,
+    create_tasks: bool = True,
 ) -> ScanResult:
-    """Run all detection rules for the given reference date (default: today)."""
+    """Run all detection rules for the given reference date (default: today).
+
+    With create_tasks=True (the production default), every new signal is turned
+    into an assigned task in the same transaction (M5 pipeline).
+    """
     reference_date = as_of or datetime.date.today()
 
     if recompute:
@@ -74,11 +80,19 @@ def run_scan(
             session, drafts, suppressions=suppressions, existing_keys=existing_keys
         )
 
-    result = ScanResult(as_of=reference_date, outcomes=outcomes)
+    tasks_created = 0
+    if create_tasks:
+        # M5: every new signal becomes exactly one assigned task, same transaction.
+        from valeri_api.signals.pipeline import create_tasks_from_signals
+
+        tasks_created = create_tasks_from_signals(session, as_of=reference_date).created
+
+    result = ScanResult(as_of=reference_date, outcomes=outcomes, tasks_created=tasks_created)
     logger.info(
-        "scan complete as_of=%s inserted=%d suppressed=%d",
+        "scan complete as_of=%s inserted=%d suppressed=%d tasks=%d",
         reference_date,
         result.total_inserted,
         result.total_suppressed,
+        result.tasks_created,
     )
     return result

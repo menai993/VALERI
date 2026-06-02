@@ -1,6 +1,6 @@
 # Spec — M6: LLM gateway + PII masking + narration + register tagging
 
-**Milestone:** M6 · **Builds on:** M5 (tasks exist with template bodies) · **Status:** awaiting review
+**Milestone:** M6 · **Builds on:** M5 (tasks exist with template bodies) · **Status:** approved (D1–D5 + sync narration OK'd by owner, 2026-06-02)
 
 ## 1. Objective
 
@@ -174,12 +174,10 @@ apps/api/pyproject.toml                    (edit) + openai ; uv.lock
 | 10. Approval gates | N/A — narration produces internal task bodies, not customer-facing communication (that's M7's approval-gated drafts). |
 | Conventions | All LLM I/O through Pydantic with reject+retry (CLAUDE.md); secrets (gateway key, PII salt) only in env; `openai` pinned + lockfile. |
 
-## 10. Open questions
+## 10. Open questions — resolved at review (2026-06-02)
 
-1. **D1 (pseudonym format)** — `Kupac-<hmac6>` + segment. OK?
-2. **D2 (register from LLM)** — task register = LLM classification (signal keeps its own). OK?
-3. **D4 (graceful fallback)** — gateway down / invalid output ⇒ template bodies, scan never
-   fails. OK?
-4. **D5 (ai_log granularity)** — one row per API call, including rejected attempts. OK?
-5. **Synchronous narration** in the pipeline (~1–2 s per task at pilot volume; Batch API
-   comes in M12). OK?
+1. **D1 (pseudonym format)** — ✅ OK: `Kupac-<hmac6>` + segment.
+2. **D2 (register from LLM)** — ✅ OK.
+3. **D4 (graceful fallback)** — ✅ OK: template bodies, scan never fails.
+4. **D5 (ai_log granularity)** — ✅ OK: one row per API call incl. rejected attempts.
+5. **Synchronous narration** — ✅ OK (Batch API in M12).

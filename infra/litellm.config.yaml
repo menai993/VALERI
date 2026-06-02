@@ -1,0 +1,32 @@
+# VALERI LLM gateway — LiteLLM routing (docs/architecture.md §4).
+#
+# All tiers are hosted Claude models via the Anthropic API; the key comes from
+# the environment (never from this file). The app talks OpenAI-compatible
+# protocol to this gateway and addresses models by tier name only, so swapping
+# a tier's underlying model is config-only.
+
+model_list:
+  # Tier-1 — small/fast/cheap: narration, intent, NL→rule, simple Q&A
+  - model_name: tier1
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Tier-2 — strong default: most chat and first-pass investigation
+  - model_name: tier2
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Tier-2 strong — hardest investigations only
+  - model_name: tier2_strong
+    litellm_params:
+      model: anthropic/claude-opus-4-8
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  drop_params: true
+  num_retries: 2
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

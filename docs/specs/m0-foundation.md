@@ -1,6 +1,6 @@
 # Spec — M0: Foundation, infra, contract
 
-**Milestone:** M0 · **Builds on:** — · **Status:** awaiting review
+**Milestone:** M0 · **Builds on:** — · **Status:** approved (D1 + D3 resolved by owner, 2026-06-02)
 
 ## 1. Objective
 
@@ -127,9 +127,9 @@ skeleton runs; everything else is deferred to M1+.
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| D1 | **Move root docs into `docs/`** (`git mv`, with `VALERI-IMPLEMENTATION-PLAN.md` → `docs/IMPLEMENTATION-PLAN.md`) | `CLAUDE.md` and the plan reference `docs/...` paths; the files currently sit at the repo root, so those references are broken. |
+| D1 | **Move root docs into `docs/`** (`git mv`, with `VALERI-IMPLEMENTATION-PLAN.md` → `docs/IMPLEMENTATION-PLAN.md`) — **RESOLVED: approved** | `CLAUDE.md` and the plan reference `docs/...` paths; the files currently sit at the repo root, so those references are broken. |
 | D2 | **Python deps managed with `uv`** (`pyproject.toml` + `uv.lock`) | CLAUDE.md requires committed lockfiles; uv is the current standard, fast in CI and Docker. |
-| D3 | **React 19 + Tailwind v4 + Vite 7** (latest stable) | CLAUDE.md: "pin the latest stable at install." `frontend-spec.md` mentions React 18 / `tailwind.config.ts` (written pre-React-19/Tailwind-4). Tokens map to Tailwind v4's CSS-first `@theme` instead of `tailwind.config.ts` — same semantic-token outcome. **Confirm or override** (fallback: React 18 + Tailwind 3.4 exactly as the frontend spec reads). |
+| D3 | **React 19 + Tailwind v4 + Vite 7** (latest stable) — **RESOLVED: approved (best long-run choice)** | CLAUDE.md: "pin the latest stable at install." `frontend-spec.md` mentions React 18 / `tailwind.config.ts` (written pre-React-19/Tailwind-4). Tokens map to Tailwind v4's CSS-first `@theme` instead of `tailwind.config.ts` — same semantic-token outcome. React 18/Tailwind 3 are maintenance-only; starting on them would force a mid-project migration. |
 | D4 | **DB driver: `psycopg` (v3, binary)** | Modern pairing with SQLAlchemy 2.x; `DATABASE_URL=postgresql+psycopg://...`. |
 | D5 | **Worker = same image as api, different command** (`python -m valeri_api.worker`) | Architecture defines worker as a Python worker over the same DB; sharing the image avoids a second Python project. M0 placeholder logs a heartbeat and sleeps; APScheduler lands in M4. |
 | D6 | **M0 Alembic migration creates only the 4 schemas** (`staging`, `core`, `app`, `audit`) | Proves migrations run end-to-end against the db service without front-running M1's tables ("one migration per schema-changing milestone"). |
@@ -361,10 +361,8 @@ CI runs these against a real `postgres:16` service. Test client: `httpx` + FastA
 | 10. Approval gates | Not in M0 scope. |
 | Conventions: secrets out of code; thresholds in DB; no localStorage | `.env.example` placeholders only; no thresholds exist yet; web shell uses no storage APIs. |
 
-## 10. Open questions for review
+## 10. Open questions — resolved at review (2026-06-02)
 
-1. **D3 (React 19 / Tailwind v4)** — accept latest stable (CLAUDE.md) over the frontend
-   spec's React 18 / `tailwind.config.ts` wording, or pin to the spec's versions?
-2. **Doc move (D1)** — confirm moving the six root docs into `docs/` (and the rename to
-   `IMPLEMENTATION-PLAN.md`) is wanted in this milestone's commit.
-3. Anything to add/remove from `.env.example` (e.g., ports, timezone)?
+1. **D3 (React 19 / Tailwind v4)** — ✅ approved: latest stable (best long-run choice).
+2. **Doc move (D1)** — ✅ approved: move the six root docs into `docs/`.
+3. `.env.example` contents — no changes requested; spec stands as written.

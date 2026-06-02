@@ -20,10 +20,15 @@ from valeri_api.seed.loader import load, reset
 
 
 def _default_manifest_path() -> Path | None:
-    """db/seed/planted_cases.json at the repo root, if the repo layout is present."""
+    """db/seed/planted_cases.json at the repo root, if the repo layout is present.
+
+    Returns None when running outside the repo (e.g. inside a container image
+    without the db/ tree); the manifest is then skipped unless --manifest-out
+    is given.
+    """
     repo_root = Path(__file__).resolve().parents[4]
-    seed_dir = repo_root / "db" / "seed"
-    return seed_dir / "planted_cases.json" if seed_dir.is_dir() else None
+    db_dir = repo_root / "db"
+    return db_dir / "seed" / "planted_cases.json" if db_dir.is_dir() else None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(data.manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
         print(f"Planted-cases manifest written to {manifest_path}")
+    else:
+        print("Repo db/ directory not found - manifest skipped (use --manifest-out to force).")
 
     print(
         f"Loaded: {len(data.legal_entities)} legal entities, {len(data.customers)} customers, "

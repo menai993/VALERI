@@ -83,3 +83,32 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
         if transaction.is_active:
             transaction.rollback()
         connection.close()
+
+
+# ── Seed fixtures (M1+): shared by seed, capability, and later milestone tests ─
+
+TEST_RNG_SEED = 20260601
+
+
+@pytest.fixture(scope="session")
+def seed_data():
+    """Generate the seed once, in memory, with fixed parameters."""
+    import datetime
+
+    from valeri_api.seed.config import SeedConfig
+    from valeri_api.seed.generate import generate
+
+    config = SeedConfig(rng_seed=TEST_RNG_SEED, as_of=datetime.date.today())
+    return generate(config)
+
+
+@pytest.fixture(scope="session")
+def seeded_db(db_engine: Engine, seed_data) -> Engine:
+    """Load the generated seed into the test database (once per session)."""
+    from valeri_api.seed.loader import load, reset
+
+    with Session(db_engine) as session:
+        reset(session)
+        load(seed_data, session)
+        session.commit()
+    return db_engine

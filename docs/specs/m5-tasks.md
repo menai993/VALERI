@@ -1,6 +1,6 @@
 # Spec — M5: Signal → Task pipeline + feedback + task log
 
-**Milestone:** M5 · **Builds on:** M4 (signals exist) · **Status:** awaiting review
+**Milestone:** M5 · **Builds on:** M4 (signals exist) · **Status:** approved (D1–D4 OK'd by owner, 2026-06-02)
 
 ## 1. Objective
 
@@ -166,13 +166,9 @@ in_progress) · `outcome` (status → done/dismissed) · `feedback` (useful, rea
 | 10. Approval gates | N/A — tasks are internal work items; no customer-facing sending exists yet (M7). |
 | Conventions | due-date offsets in `rule_config` (never literals); typed Pydantic I/O; one migration; cursor pagination per api-spec. |
 
-## 10. Open questions
+## 10. Open questions — resolved at review (2026-06-02)
 
-1. **D1 — Template bodies in M5**: task body/title/proposed_action are deterministic Bosnian
-   templates until M6 replaces them with LLM narration (same data, richer phrasing). Confirm?
-2. **D2 — Top-10 ranking**: rank customers by `turnover_6m_avg_60d` (the baseline) for
-   owner_cc. Alternative: total 12-month turnover. Confirm baseline?
-3. **D3 — Due-date offsets** (`task_due_days` in rule_config): customer_decline **3** days,
-   sleeping_customer **5**, lost_article **7**, lost_category **7**, narrow_basket **14**. OK?
-4. **D4 — Task register**: every task = `preporuka` (the signal keeps analiza/preporuka).
-   Confirm?
+1. **D1 — Template bodies in M5** — ✅ confirmed (LLM narration replaces them in M6).
+2. **D2 — Top-10 ranking** — ✅ confirmed: `turnover_6m_avg_60d`.
+3. **D3 — Due-date offsets** — ✅ confirmed: 3/5/7/7/14 days.
+4. **D4 — Task register** — ✅ confirmed: every task = `preporuka`.

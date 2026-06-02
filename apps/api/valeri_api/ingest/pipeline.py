@@ -18,7 +18,12 @@ from valeri_api.ingest.upsert import upsert_to_core
 REQUIRED_FILES = ("kupci", "artikli", "fakture", "stavke")
 
 
-def run_import(session: Session, files: dict[str, Path], source: str) -> ImportRun:
+def run_import(
+    session: Session,
+    files: dict[str, Path],
+    source: str,
+    recompute_metrics: bool = True,
+) -> ImportRun:
     """Run a full import of one export (4 files). Returns the finalized ImportRun.
 
     Raises on any error; the caller is responsible for rollback/commit.
@@ -40,7 +45,13 @@ def run_import(session: Session, files: dict[str, Path], source: str) -> ImportR
     # 3. Idempotent upsert into core by natural keys.
     stats = upsert_to_core(session, run.id)
 
-    # 4. Finalize the run.
+    # 4. Derived metrics: the data they derive from may have just changed (M3).
+    if recompute_metrics:
+        from valeri_api.metrics.recompute import recompute_all
+
+        recompute_all(session)
+
+    # 5. Finalize the run.
     run.stats = stats.model_dump(mode="json")
     run.report = quality.model_dump(mode="json")
     run.status = "completed"

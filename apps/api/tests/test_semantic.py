@@ -94,9 +94,7 @@ def test_metric_results_equal_direct_sql(golden_semantic_db: Engine) -> None:
 
         # Ad-hoc turnover over the whole company in the 60d window.
         window_start = fx.AS_OF - datetime.timedelta(days=60)
-        total = run_metric(
-            session, "turnover", {"from_date": window_start, "to_date": fx.AS_OF}
-        )
+        total = run_metric(session, "turnover", {"from_date": window_start, "to_date": fx.AS_OF})
         assert total.scalar() == fx.EXPECTED_TOTAL_TURNOVER_60D
 
         # Ad-hoc turnover filtered to one customer equals its stored 60d turnover.

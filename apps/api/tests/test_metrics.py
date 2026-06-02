@@ -75,9 +75,9 @@ def test_golden_customer_metrics(golden_db: Engine) -> None:
     for customer_id, expected in fx.EXPECTED_CUSTOMER_METRICS.items():
         for column, expected_value in expected.items():
             actual_value = actual[customer_id][column]
-            assert actual_value == expected_value, (
-                f"customer {customer_id}.{column}: {actual_value!r} != {expected_value!r}"
-            )
+            assert (
+                actual_value == expected_value
+            ), f"customer {customer_id}.{column}: {actual_value!r} != {expected_value!r}"
 
 
 def test_golden_cadence(golden_db: Engine) -> None:
@@ -99,12 +99,12 @@ def test_golden_cadence(golden_db: Engine) -> None:
     }
     assert set(actual) == set(fx.EXPECTED_CADENCE), "cadence pair set differs"
     for pair, expected in fx.EXPECTED_CADENCE.items():
-        assert actual[pair]["avg_interval_d"] == expected["avg_interval_d"], (
-            f"{pair} interval: {actual[pair]['avg_interval_d']} != {expected['avg_interval_d']}"
-        )
-        assert actual[pair]["last_seen"] == expected["last_seen"], (
-            f"{pair} last_seen: {actual[pair]['last_seen']} != {expected['last_seen']}"
-        )
+        assert (
+            actual[pair]["avg_interval_d"] == expected["avg_interval_d"]
+        ), f"{pair} interval: {actual[pair]['avg_interval_d']} != {expected['avg_interval_d']}"
+        assert (
+            actual[pair]["last_seen"] == expected["last_seen"]
+        ), f"{pair} last_seen: {actual[pair]['last_seen']} != {expected['last_seen']}"
 
 
 def test_golden_segment_basket(golden_db: Engine) -> None:
@@ -181,8 +181,7 @@ def test_seed_customer_metrics_match_direct_sql(seeded_metrics_db, seed_data) ->
     engine, as_of = seeded_metrics_db
     with engine.connect() as conn:
         mismatches = conn.execute(
-            text(
-                """
+            text("""
                 WITH direct AS (
                   SELECT c.id AS customer_id,
                          COALESCE(SUM(i.total) FILTER (
@@ -202,8 +201,7 @@ def test_seed_customer_metrics_match_direct_sql(seeded_metrics_db, seed_data) ->
                 WHERE m.turnover_60d <> ROUND(d.turnover_60d, 2)
                    OR m.turnover_6m_avg_60d <> ROUND(d.baseline, 2)
                    OR m.last_order_date IS DISTINCT FROM d.last_order_date
-                """
-            ),
+                """),
             {"as_of": as_of},
         ).all()
     assert mismatches == [], f"metrics differ from direct SQL for customers {mismatches}"

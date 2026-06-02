@@ -47,6 +47,12 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# Golden fixtures keep one data row per line for hand-verifiability.
+"tests/fixtures/*" = ["E501"]
+
 [tool.black]
 target-version = ["py312"]
 line-length = 100
+# Golden fixtures keep one data row per line for hand-verifiability.
+force-exclude = "tests/fixtures/metrics_fixture.py"

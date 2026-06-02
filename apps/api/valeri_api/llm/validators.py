@@ -8,7 +8,7 @@ numeric token in a narration must exist in the masked payload's allowed set
 import json
 import re
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from valeri_api.llm.masking import _normalise  # shared normalisation rules
 from valeri_api.llm.schemas import TaskNarration
@@ -29,8 +29,11 @@ _NUMBER_PATTERN = re.compile(r"\d+(?:[.,]\d+)?")
 _PSEUDONYM_PATTERN = re.compile(r"Kupac-[0-9a-fA-F]{6}")
 
 
-def parse_narration(raw_text: str) -> TaskNarration:
-    """Parse + schema-validate a raw LLM response. Raises NarrationInvalid."""
+def parse_structured[T: BaseModel](raw_text: str, schema: type[T]) -> T:
+    """Parse + validate a raw LLM response against any output schema.
+
+    Raises NarrationInvalid with Bosnian reasons (fed back on retry).
+    """
     match = _JSON_BLOCK.search(raw_text)
     if match is None:
         raise NarrationInvalid(["Odgovor ne sadrži JSON objekat."])
@@ -41,13 +44,18 @@ def parse_narration(raw_text: str) -> TaskNarration:
         raise NarrationInvalid([f"Neispravan JSON: {error}"]) from error
 
     try:
-        return TaskNarration.model_validate(data)
+        return schema.model_validate(data)
     except ValidationError as error:
         reasons = [
             f"Polje '{'.'.join(str(p) for p in issue['loc'])}': {issue['msg']}"
             for issue in error.errors()
         ]
         raise NarrationInvalid(reasons) from error
+
+
+def parse_narration(raw_text: str) -> TaskNarration:
+    """Parse + schema-validate a raw task narration. Raises NarrationInvalid."""
+    return parse_structured(raw_text, TaskNarration)
 
 
 def extract_numbers(text: str) -> list[str]:

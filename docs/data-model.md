@@ -224,8 +224,18 @@ CREATE TABLE app.approval (                          -- M7; gates customer-facin
   task_id     BIGINT REFERENCES app.task(id),
   kind        TEXT NOT NULL,                         -- offer/message/...
   status      appr_status NOT NULL DEFAULT 'draft',
+  payload     JSONB,                                 -- the thing being approved: draft text, customer, channel
   decided_by  BIGINT,
   decided_at  TIMESTAMPTZ
+);
+
+CREATE TABLE app.owner_report (                      -- M7; immutable weekly report snapshot
+  id           BIGSERIAL PRIMARY KEY,
+  week_start   DATE NOT NULL,                        -- Monday
+  week_end     DATE NOT NULL,                        -- Sunday
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload      JSONB NOT NULL,                       -- sections: aggregates + narratives + registers
+  UNIQUE (week_start, week_end)
 );
 
 -- conversation (M9)

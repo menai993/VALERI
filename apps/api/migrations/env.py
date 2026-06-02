@@ -6,6 +6,8 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 import valeri_api.domain.models  # noqa: F401  (registers core.* models on Base.metadata)
+import valeri_api.ingest.models  # noqa: F401  (registers staging.* models)
+import valeri_api.rules.models  # noqa: F401  (registers app.* detection models)
 from valeri_api.config import get_settings
 from valeri_api.db import Base
 

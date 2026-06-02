@@ -41,6 +41,11 @@ packages = ["valeri_api"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+    # "register" is a domain term (analiza/preporuka/akcija) used as a field name
+    # throughout the data model; the Pydantic shadow warning is expected.
+    "ignore:Field name \"register\":UserWarning",
+]
 
 [tool.ruff]
 target-version = "py312"

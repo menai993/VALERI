@@ -37,9 +37,10 @@ autonomy_enum = ENUM("auto_applied", "confirmed", name="autonomy", create_type=F
 
 # Default thresholds (documented in docs/rules/*.md). Values are JSONB.
 DEFAULT_RULE_CONFIG: list[tuple[str, str, object]] = [
-    # global confidence bands
+    # global confidence bands + cap
     ("global", "conf_band_high", 0.75),
     ("global", "conf_band_mid", 0.50),
+    ("global", "conf_cap", 0.95),
     # customer_decline
     ("customer_decline", "decline_ratio_threshold", 0.65),
     ("customer_decline", "min_baseline_60d", 500),
@@ -103,9 +104,7 @@ def upgrade() -> None:
         sa.Column("confidence", sa.Numeric(4, 3), nullable=False),
         sa.Column("conf_band", conf_band_enum, nullable=False),
         sa.Column("register", register_enum, nullable=False, server_default=sa.text("'analiza'")),
-        sa.Column(
-            "status", signal_status_enum, nullable=False, server_default=sa.text("'new'")
-        ),
+        sa.Column("status", signal_status_enum, nullable=False, server_default=sa.text("'new'")),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

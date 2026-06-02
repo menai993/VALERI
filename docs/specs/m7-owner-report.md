@@ -1,6 +1,6 @@
 # Spec — M7: Owner report + approval workflow
 
-**Milestone:** M7 · **Builds on:** M6 (LLM narration layer exists) · **Status:** approved (D1–D5 + week boundary OK'd by owner, 2026-06-02)
+**Milestone:** M7 · **Builds on:** M6 (LLM narration layer exists) · **Status:** implemented (commit 96da94c; 13/13 tests green, principle-reviewer PASS, 2026-06-02)
 
 ## 1. Objective
 

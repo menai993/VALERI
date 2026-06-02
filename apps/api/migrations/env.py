@@ -5,6 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+import valeri_api.domain.models  # noqa: F401  (registers core.* models on Base.metadata)
 from valeri_api.config import get_settings
 from valeri_api.db import Base
 

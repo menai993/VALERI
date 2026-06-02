@@ -1,0 +1,139 @@
+{
+  "rng_seed": 20260601,
+  "as_of": "2026-06-02",
+  "declines": [
+    {
+      "customer_id": 7,
+      "external_code": "UH-0007",
+      "baseline_60d": "31660.97",
+      "last_60d": "14155.90"
+    },
+    {
+      "customer_id": 12,
+      "external_code": "UH-0012",
+      "baseline_60d": "20597.33",
+      "last_60d": "12431.40"
+    },
+    {
+      "customer_id": 21,
+      "external_code": "UH-0021",
+      "baseline_60d": "19563.17",
+      "last_60d": "7780.30"
+    }
+  ],
+  "seasonal_cafes": [
+    {
+      "customer_id": 47,
+      "external_code": "UH-0047",
+      "last_60d": "2627.30",
+      "same_window_last_year": "2336.70"
+    },
+    {
+      "customer_id": 50,
+      "external_code": "UH-0050",
+      "last_60d": "1132.50",
+      "same_window_last_year": "1368.00"
+    }
+  ],
+  "lost_articles": [
+    {
+      "customer_id": 5,
+      "article_id": 68,
+      "last_seen": "2026-01-27",
+      "cadence_days": 13.2,
+      "purchases_before_loss": 32
+    },
+    {
+      "customer_id": 57,
+      "article_id": 57,
+      "last_seen": "2026-02-11",
+      "cadence_days": 22.5,
+      "purchases_before_loss": 19
+    },
+    {
+      "customer_id": 59,
+      "article_id": 51,
+      "last_seen": "2026-02-02",
+      "cadence_days": 22.2,
+      "purchases_before_loss": 20
+    },
+    {
+      "customer_id": 63,
+      "article_id": 49,
+      "last_seen": "2026-02-17",
+      "cadence_days": 16.5,
+      "purchases_before_loss": 27
+    }
+  ],
+  "code_swaps": [
+    {
+      "old_code": "ART-0036",
+      "old_article_id": 36,
+      "new_article_id": 121,
+      "new_code": "ART-0121",
+      "swap_date": "2026-02-02",
+      "customer_ids": [
+        6,
+        27,
+        48,
+        53,
+        69,
+        78,
+        79,
+        81
+      ]
+    },
+    {
+      "old_code": "ART-0119",
+      "old_article_id": 119,
+      "new_article_id": 122,
+      "new_code": "ART-0122",
+      "swap_date": "2026-02-02",
+      "customer_ids": [
+        10,
+        75,
+        77
+      ]
+    }
+  ],
+  "narrow_baskets": [
+    {
+      "customer_id": 29,
+      "external_code": "UH-0029",
+      "segment": "restoran"
+    },
+    {
+      "customer_id": 62,
+      "external_code": "UH-0062",
+      "segment": "klinika"
+    },
+    {
+      "customer_id": 64,
+      "external_code": "UH-0064",
+      "segment": "klinika"
+    }
+  ],
+  "sleeping": [
+    {
+      "customer_id": 18,
+      "external_code": "UH-0018",
+      "last_order": "2026-02-14",
+      "avg_interval_days": 13.0,
+      "invoice_count": 34
+    },
+    {
+      "customer_id": 20,
+      "external_code": "UH-0020",
+      "last_order": "2026-02-19",
+      "avg_interval_days": 12.3,
+      "invoice_count": 37
+    },
+    {
+      "customer_id": 31,
+      "external_code": "UH-0031",
+      "last_order": "2026-02-20",
+      "avg_interval_days": 7.9,
+      "invoice_count": 57
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * VALERI design tokens — docs/ui-design.md §3.
+ * Components use semantic classes (bg-surface, text-text-2, shadow-card …),
+ * never raw hex. The full theme/widget work lands in M8; M0 declares the
+ * token set so every later component builds on it.
+ */
+:root {
+  /* surfaces & text (light) */
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --border: #eaeef3;
+  --text: #1f2733;
+  --text-2: #5e6b7a;
+  --text-3: #97a1ad;
+
+  /* accent & semantics */
+  --primary: #2f6bed;
+  --primary-soft: #eaf1fe;
+  --up: #16a34a;
+  --down: #e5484d;
+  --risk-high: #e5484d;
+  --risk-mid: #ef8f1c;
+  --risk-low: #16a34a;
+
+  /* register chips (Analiza / Preporuka / Akcija) */
+  --register-analiza-bg: #eaf1fe;
+  --register-analiza-text: #1a4f8a;
+  --register-preporuka-bg: #fdf1e0;
+  --register-preporuka-text: #9a5a0c;
+  --register-akcija-bg: #e8f6ec;
+  --register-akcija-text: #1d7a3e;
+
+  /* shape & elevation */
+  --r-lg: 16px;
+  --r-md: 10px;
+  --r-sm: 7px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow:
+    0 1px 3px rgba(16, 24, 40, 0.07), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.dark {
+  --bg: #0e1217;
+  --surface: #161b22;
+  --surface-2: #1b2129;
+  --border: #242c35;
+  --text: #e8ecf1;
+  --text-2: #9aa6b2;
+  --text-3: #6b7681;
+
+  --primary: #5b8def;
+  --primary-soft: #172643;
+  --up: #54c882;
+  --down: #f0716f;
+  --risk-high: #f0716f;
+  --risk-mid: #eaa64b;
+  --risk-low: #54c882;
+}
+
+@theme inline {
+  /* VALERI semantic colors */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-risk-high: var(--risk-high);
+  --color-risk-mid: var(--risk-mid);
+  --color-risk-low: var(--risk-low);
+  --color-register-analiza-bg: var(--register-analiza-bg);
+  --color-register-analiza-text: var(--register-analiza-text);
+  --color-register-preporuka-bg: var(--register-preporuka-bg);
+  --color-register-preporuka-text: var(--register-preporuka-text);
+  --color-register-akcija-bg: var(--register-akcija-bg);
+  --color-register-akcija-text: var(--register-akcija-text);
+
+  /* shadcn/ui standard tokens mapped onto VALERI tokens, so `shadcn add`
+     components are themed correctly out of the box (M8 extends this). */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-2);
+  --color-accent: var(--primary-soft);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--down);
+  --color-destructive-foreground: #ffffff;
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+
+  /* shape & elevation */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --shadow-card-sm: var(--shadow-sm);
+  --shadow-card: var(--shadow);
+
+  /* typography */
+  --font-sans:
+    "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Tabular numerals wherever money/percentages appear (ui-design.md §3). */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}

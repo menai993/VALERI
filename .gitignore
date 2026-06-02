@@ -1,0 +1,37 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ── Node / web ──
+node_modules/
+apps/web/dist/
+*.tsbuildinfo
+
+# ── Environment & secrets (never commit real env files) ──
+.env
+.env.*
+!.env.example
+infra/.env
+
+# ── Docker / runtime ──
+pgdata/
+caddy_data/
+caddy_config/
+
+# ── Editors / OS ──
+.idea/
+.vscode/
+.DS_Store
+*.swp

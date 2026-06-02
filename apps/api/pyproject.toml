@@ -1,0 +1,59 @@
+[project]
+name = "valeri-api"
+version = "0.1.0"
+description = "VALERI - on-prem AI business operating layer (API)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy>=2.0",
+    "alembic>=1.16",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.11",
+    "pydantic-settings>=2.9",
+    "openpyxl>=3.1.5",
+    "python-multipart>=0.0.30",
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.11",
+    "black>=25.1",
+]
+# Used only by the client-distribution Docker build (Dockerfile target `dist`):
+# compiles valeri_api to native binaries so client images carry no readable source.
+dist = [
+    "cython>=3.0",
+    "setuptools>=80",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["valeri_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Golden fixtures keep one data row per line for hand-verifiability.
+"tests/fixtures/*" = ["E501"]
+
+[tool.black]
+target-version = ["py312"]
+line-length = 100
+# Golden fixtures keep one data row per line for hand-verifiability.
+force-exclude = "tests/fixtures/metrics_fixture.py"

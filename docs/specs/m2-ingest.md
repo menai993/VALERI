@@ -1,6 +1,6 @@
 # Spec — M2: Ingestion / staging / data-quality
 
-**Milestone:** M2 · **Builds on:** M1 (core graph + seed) · **Status:** awaiting review
+**Milestone:** M2 · **Builds on:** M1 (core graph + seed) · **Status:** approved (D1–D3 OK'd by owner, 2026-06-02)
 
 ## 1. Objective
 
@@ -193,9 +193,8 @@ teardown restores the M1-loaded seed so later M1 tests are unaffected.
 | 10. Approval gates | N/A (no customer-facing communication). |
 | Conventions | Money Decimal/NUMERIC; typed Pydantic schemas for API I/O; no secrets; no hard-coded business thresholds (D5); migration discipline (one per milestone). |
 
-## 10. Open questions
+## 10. Open questions — resolved at review (2026-06-02)
 
-1. **D1 (`core.invoice.external_no`)** — approve the schema addition + data-model.md update?
-   (Without it, idempotent invoice import is impossible.)
-2. **D2 (export format/content)** — 4 files, Bosnian headers, `;` delimiter, no contacts. OK?
-3. **D3 (synchronous import)** — OK for now (seconds at this volume)?
+1. **D1 (`core.invoice.external_no`)** — ✅ approved (schema addition + data-model.md update).
+2. **D2 (export format/content)** — ✅ approved (4 files, Bosnian headers, `;` delimiter, no contacts).
+3. **D3 (synchronous import)** — ✅ approved.

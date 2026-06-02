@@ -1,0 +1,126 @@
+# VALERI metric registry (M3).
+#
+# Every queryable metric: where its number comes from (SQL with named bind
+# parameters ONLY — string interpolation is rejected by the loader), what
+# entity/grain it describes, and which parameters it accepts.
+#
+# Window convention: half-open intervals (start, end] — the start date is
+# excluded, the end date is included.
+
+metrics:
+  customer_turnover_60d:
+    description_bs: "Promet kupca u zadnjih 60 dana (iz core.customer_metrics)"
+    description_en: "Customer turnover in the last 60 days (from core.customer_metrics)"
+    entity: customer
+    grain: scalar
+    params:
+      - { name: customer_id, type: integer, required: true }
+    sql: |
+      SELECT turnover_60d AS value
+      FROM core.customer_metrics
+      WHERE customer_id = :customer_id
+
+  customer_baseline_60d:
+    description_bs: "6-mjesečna osnovica kupca normalizovana na 60 dana"
+    description_en: "Customer 6-month baseline normalised to a 60-day window"
+    entity: customer
+    grain: scalar
+    params:
+      - { name: customer_id, type: integer, required: true }
+    sql: |
+      SELECT turnover_6m_avg_60d AS value
+      FROM core.customer_metrics
+      WHERE customer_id = :customer_id
+
+  customer_last_order:
+    description_bs: "Datum posljednje narudžbe kupca"
+    description_en: "Customer's last order date"
+    entity: customer
+    grain: scalar
+    params:
+      - { name: customer_id, type: integer, required: true }
+    sql: |
+      SELECT last_order_date AS value
+      FROM core.customer_metrics
+      WHERE customer_id = :customer_id
+
+  customer_order_interval:
+    description_bs: "Prosječan razmak između narudžbi kupca (dani)"
+    description_en: "Customer's average interval between orders (days)"
+    entity: customer
+    grain: scalar
+    params:
+      - { name: customer_id, type: integer, required: true }
+    sql: |
+      SELECT avg_order_interval_d AS value
+      FROM core.customer_metrics
+      WHERE customer_id = :customer_id
+
+  article_cadence:
+    description_bs: "Ritam kupovine artikla kod kupca (prosječan razmak + zadnja kupovina)"
+    description_en: "Purchase cadence of an article for a customer (avg interval + last seen)"
+    entity: article
+    grain: row
+    params:
+      - { name: customer_id, type: integer, required: true }
+      - { name: article_id, type: integer, required: true }
+    sql: |
+      SELECT avg_interval_d, last_seen
+      FROM core.cust_article_cadence
+      WHERE customer_id = :customer_id AND article_id = :article_id
+
+  segment_basket:
+    description_bs: "Zastupljenost kategorija u segmentu (udio kupaca koji kupuju kategoriju)"
+    description_en: "Category prevalence within a segment (share of customers buying it)"
+    entity: segment
+    grain: series
+    params:
+      - { name: segment, type: string, required: true }
+    sql: |
+      SELECT category_id, prevalence
+      FROM core.segment_basket
+      WHERE segment = :segment
+      ORDER BY prevalence DESC, category_id
+
+  turnover:
+    description_bs: "Ukupan promet za period, opcionalno po kupcu/artiklu/kategoriji/segmentu"
+    description_en: "Total turnover for a period, optionally by customer/article/category/segment"
+    entity: company
+    grain: scalar
+    params:
+      - { name: from_date, type: date, required: true }
+      - { name: to_date, type: date, required: true }
+      - { name: customer_id, type: integer, required: false }
+      - { name: article_id, type: integer, required: false }
+      - { name: category_id, type: integer, required: false }
+      - { name: segment, type: string, required: false }
+    sql: |
+      SELECT COALESCE(SUM(l.line_total), 0) AS value
+      FROM core.invoice_line l
+      JOIN core.invoice i ON i.id = l.invoice_id
+      JOIN core.article a ON a.id = l.article_id
+      JOIN core.customer c ON c.id = i.customer_id
+      WHERE i.date > :from_date AND i.date <= :to_date
+        AND (CAST(:customer_id AS BIGINT) IS NULL OR i.customer_id = :customer_id)
+        AND (CAST(:article_id AS BIGINT) IS NULL OR l.article_id = :article_id)
+        AND (CAST(:category_id AS BIGINT) IS NULL OR a.category_id = :category_id)
+        AND (CAST(:segment AS TEXT) IS NULL OR c.segment = :segment)
+
+  turnover_by_month:
+    description_bs: "Mjesečni promet za period (serija), opcionalno po kupcu"
+    description_en: "Monthly turnover series for a period, optionally by customer"
+    entity: company
+    grain: series
+    params:
+      - { name: from_date, type: date, required: true }
+      - { name: to_date, type: date, required: true }
+      - { name: customer_id, type: integer, required: false }
+    sql: |
+      SELECT CAST(DATE_TRUNC('month', i.date) AS date) AS month,
+             COALESCE(SUM(l.line_total), 0) AS value
+      FROM core.invoice_line l
+      JOIN core.invoice i ON i.id = l.invoice_id
+      WHERE i.date > :from_date AND i.date <= :to_date
+        AND (CAST(:customer_id AS BIGINT) IS NULL OR i.customer_id = :customer_id)
+      GROUP BY 1
+      ORDER BY 1

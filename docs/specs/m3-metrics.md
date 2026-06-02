@@ -1,6 +1,6 @@
 # Spec — M3: Metrics & semantic layer (trust foundation)
 
-**Milestone:** M3 · **Builds on:** M2 (core graph + import path) · **Status:** awaiting review
+**Milestone:** M3 · **Builds on:** M2 (core graph + import path) · **Status:** approved (Q1–Q4 OK'd by owner, 2026-06-02)
 **TDD: golden tests and fixtures are written before any implementation.**
 
 ## 1. Objective
@@ -210,13 +210,9 @@ Handcrafted, fixed `as_of = 2026-06-01`, hand-computed expected values:
 | 10. Approval gates | N/A. |
 | Conventions | Money NUMERIC/Decimal; thresholds: none introduced (metric definitions are facts, not thresholds — thresholds arrive with M4 rules in `app.rule_config`); typed Pydantic for registry/results; one migration. |
 
-## 11. Open questions
+## 11. Open questions — resolved at review (2026-06-02)
 
-1. **Baseline definition** — `turnover_6m_avg_60d` = turnover of the 180 days **before** the
-   current 60-day window (i.e. `(as_of−240d, as_of−60d]`), divided by 3. This matches how M1
-   planted the declines and how M4 will detect them. Confirm?
-2. **avg_order_interval_d horizon** — computed over **all available history** (~18 months).
-   Alternative: cap at last 12 months. Propose: all history.
-3. **segment_basket horizon** — prevalence over **all available history**. Propose: all history.
-4. **Recompute after import** — `run_import()` triggers metrics recompute by default
-   (decoupled flag, can be disabled). Confirm?
+1. **Baseline definition** — ✅ confirmed: `(as_of−240d, as_of−60d]` ÷ 3.
+2. **avg_order_interval_d horizon** — ✅ confirmed: all available history.
+3. **segment_basket horizon** — ✅ confirmed: all available history.
+4. **Recompute after import** — ✅ confirmed: on by default (flag to disable).

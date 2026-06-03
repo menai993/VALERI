@@ -30,11 +30,17 @@ class MaskingContext(BaseModel):
     """Pseudonym ↔ real-name mapping for one narration (used only for rehydration)."""
 
     pseudonyms: dict[str, str] = {}  # pseudonym -> real name
+    customer_ids: dict[str, int] = {}  # pseudonym -> customer id (server-side ref resolution)
 
     def register_customer(self, customer_id: int, real_name: str) -> str:
         alias = pseudonym(customer_id)
         self.pseudonyms[alias] = real_name
+        self.customer_ids[alias] = customer_id
         return alias
+
+    def customer_id_for(self, alias: str) -> int | None:
+        """Map a pseudonym the model referenced back to the real customer id."""
+        return self.customer_ids.get(alias)
 
 
 def build_masked_payload(
@@ -84,6 +90,45 @@ def rehydrate(text: str, context: MaskingContext) -> str:
         if real_name:
             result = result.replace(alias, real_name)
     return result
+
+
+# ── chat masking (M9): free text + tool outputs ──────────────────────────────
+
+
+def mask_text(text: str, resolved: list[tuple[str, int, str]], context: MaskingContext) -> str:
+    """Replace resolved entity mentions in free text with pseudonyms.
+
+    `resolved` is [(matched_text, customer_id, real_name)] from server-side entity
+    resolution (conversation/resolution.py) — the model never resolves entities.
+    """
+    masked = text
+    for matched_text, customer_id, real_name in resolved:
+        alias = context.register_customer(customer_id, real_name)
+        masked = masked.replace(matched_text, alias)
+    return masked
+
+
+def mask_customer_fields(payload: Any, context: MaskingContext) -> Any:
+    """Mask customer identity inside tool outputs before they reach a prompt.
+
+    Wherever a dict carries customer_id + customer_name together, the name is
+    replaced by the pseudonym (registered for later rehydration). Contact-style
+    keys are scrubbed defensively.
+    """
+    if isinstance(payload, dict):
+        masked = {}
+        customer_id = payload.get("customer_id")
+        for key, value in payload.items():
+            if key.lower() in _FORBIDDEN_KEYS:
+                continue
+            if key == "customer_name" and customer_id is not None and value:
+                masked[key] = context.register_customer(customer_id, str(value))
+            else:
+                masked[key] = mask_customer_fields(value, context)
+        return masked
+    if isinstance(payload, list):
+        return [mask_customer_fields(item, context) for item in payload]
+    return payload
 
 
 # ── allowed-number collection (for the number contract) ──────────────────────

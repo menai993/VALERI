@@ -262,3 +262,35 @@ export interface Paginated<T> {
 export interface Items<T> {
   items: T[]
 }
+
+// ── chat (M9) ─────────────────────────────────────────────────────────────────
+
+export interface ChatSession {
+  id: number
+  title: string | null
+  started_at: string
+}
+
+export interface ChatToolCall {
+  tool: string
+  params: Record<string, unknown>
+  ok: boolean
+  error_code: string | null
+  narration_source: string
+}
+
+export interface ChatMessageRow {
+  id: number
+  role: "user" | "assistant"
+  content: string | null
+  register: Register | null
+  tool_calls: ChatToolCall[] | null
+  created_at: string
+}
+
+export interface ChatHistory {
+  id: number
+  title: string | null
+  started_at: string
+  messages: ChatMessageRow[]
+}

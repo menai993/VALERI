@@ -14,7 +14,7 @@ import {
   Settings,
   Users,
 } from "lucide-react"
-import { NavLink } from "react-router"
+import { NavLink, useNavigate } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
 import { useT } from "@/lib/i18n"
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 
 export function Sidebar() {
   const t = useT()
+  const navigate = useNavigate()
   const { data: user } = useMe()
   const isRep = user?.role === "sales_rep"
 
@@ -81,9 +82,11 @@ export function Sidebar() {
               {label}
             </button>
           ))}
-          {/* Pitaj VALERI routes to chat in M9 */}
+          {/* Pitaj VALERI → the M9 chat screen */}
           <button
             type="button"
+            onClick={() => navigate("/chat")}
+            data-testid="quick-action-chat"
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-text-2 transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <span className="flex h-5 w-5 items-center justify-center rounded-full border">

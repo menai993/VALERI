@@ -234,6 +234,16 @@ export const bs = {
     title: "Prilike",
     phase2: "Modul prilika (CRM pipeline) stiže u Fazi 2.",
   },
+  chat: {
+    title: "Pitaj VALERI",
+    subtitle: "Razgovarajte s poslovnim podacima na bosanskom",
+    new_session: "Novi razgovor",
+    untitled: "Razgovor bez naslova",
+    empty: "Postavite pitanje o prometu, kupcima, artiklima ili signalima.",
+    input_placeholder: "Npr. Koliki je promet u zadnjih 30 dana?",
+    thinking: "VALERI analizira…",
+    task_created: "Zadatak kreiran",
+  },
 }
 
 export type StringCatalog = typeof bs

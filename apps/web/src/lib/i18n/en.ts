@@ -236,4 +236,14 @@ export const en: StringCatalog = {
     title: "Opportunities",
     phase2: "The opportunities module (CRM pipeline) arrives in Phase 2.",
   },
+  chat: {
+    title: "Ask VALERI",
+    subtitle: "Talk to your business data",
+    new_session: "New conversation",
+    untitled: "Untitled conversation",
+    empty: "Ask about revenue, customers, articles or signals.",
+    input_placeholder: "E.g. What is the revenue in the last 30 days?",
+    thinking: "VALERI is analysing…",
+    task_created: "Task created",
+  },
 }

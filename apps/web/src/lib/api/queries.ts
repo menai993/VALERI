@@ -10,6 +10,8 @@ import { api } from "./client"
 import type {
   Approval,
   ArticleRow,
+  ChatHistory,
+  ChatSession,
   CustomerDetail,
   CustomerRow,
   DashboardResponse,
@@ -231,5 +233,30 @@ export function useUsers() {
     queryKey: ["settings", "users"],
     queryFn: () => api.get<Items<User>>("/api/settings/users"),
     retry: false,
+  })
+}
+
+// ── chat (M9) ─────────────────────────────────────────────────────────────────
+
+export function useChatSessions() {
+  return useQuery<Items<ChatSession>>({
+    queryKey: ["chat", "sessions"],
+    queryFn: () => api.get<Items<ChatSession>>("/api/chat/sessions"),
+  })
+}
+
+export function useChatHistory(sessionId: number | null) {
+  return useQuery<ChatHistory>({
+    queryKey: ["chat", "history", sessionId],
+    queryFn: () => api.get<ChatHistory>(`/api/chat/sessions/${sessionId}`),
+    enabled: sessionId !== null,
+  })
+}
+
+export function useCreateChatSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ session_id: number }>("/api/chat/sessions"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chat", "sessions"] }),
   })
 }

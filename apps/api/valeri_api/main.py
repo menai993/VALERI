@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from valeri_api.api.approvals import router as approvals_router
 from valeri_api.api.articles import router as articles_router
 from valeri_api.api.auth import router as auth_router
+from valeri_api.api.chat import router as chat_router
 from valeri_api.api.customers import router as customers_router
 from valeri_api.api.dashboard import router as dashboard_router
 from valeri_api.api.health import router as health_router
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     application.include_router(articles_router, prefix="/api")
     application.include_router(signals_router, prefix="/api")
     application.include_router(settings_router, prefix="/api")
+    application.include_router(chat_router, prefix="/api")
 
     @application.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:

@@ -2,6 +2,8 @@
  * TopBar (ui-design §5): brand, global search (chat entry in M9), notifications,
  * profile menu with theme/language toggles and logout.
  */
+import { useState } from "react"
+
 import { Bell, ChevronDown, Globe, LogOut, Moon, Search, Sun } from "lucide-react"
 import { useNavigate } from "react-router"
 
@@ -21,6 +23,7 @@ import { useLanguageStore, useThemeStore } from "@/store/ui"
 export function TopBar() {
   const t = useT()
   const navigate = useNavigate()
+  const [search, setSearch] = useState("")
   const { data: user } = useMe()
   const logout = useLogout()
   const { theme, toggleTheme } = useThemeStore()
@@ -34,14 +37,27 @@ export function TopBar() {
         <span className="text-lg font-bold tracking-tight text-text">VALERI</span>
       </div>
 
-      <div className="relative hidden max-w-md flex-1 md:block">
+      {/* GlobalSearch doubles as the Ask-VALERI entry: submitting routes to chat. */}
+      <form
+        className="relative hidden max-w-md flex-1 md:block"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const query = search.trim()
+          if (query) {
+            navigate(`/chat?q=${encodeURIComponent(query)}`)
+            setSearch("")
+          }
+        }}
+      >
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
         <Input
           className="pl-9"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
           placeholder={t.nav.search_placeholder}
           aria-label={t.nav.search_placeholder}
         />
-      </div>
+      </form>
 
       <div className="flex items-center gap-3">
         <button

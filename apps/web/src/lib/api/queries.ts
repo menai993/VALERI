@@ -33,6 +33,9 @@ import type {
   LlmSettings,
   LlmSettingsPatch,
   LostArticleRow,
+  MetricsStatus,
+  RecomputeResult,
+  ScanResult,
   Opportunity,
   PipelineResponse,
   OwnerReport,
@@ -574,6 +577,44 @@ export function useUsers() {
     queryKey: ["settings", "users"],
     queryFn: () => api.get<Items<User>>("/api/settings/users"),
     retry: false,
+  })
+}
+
+// ── admin: derived-metrics control (admin-recompute-panel) ─────────────────────
+
+export function useMetricsStatus() {
+  return useQuery<MetricsStatus>({
+    queryKey: ["admin", "metrics-status"],
+    queryFn: () => api.get<MetricsStatus>("/api/admin/metrics/status"),
+    retry: false,
+  })
+}
+
+/** Invalidate everything that reads the derived tables after a refresh. */
+function useDerivedDataRefresh() {
+  const queryClient = useQueryClient()
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["admin", "metrics-status"] })
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    queryClient.invalidateQueries({ queryKey: ["metrics"] })
+    queryClient.invalidateQueries({ queryKey: ["customers"] })
+    queryClient.invalidateQueries({ queryKey: ["signals"] })
+  }
+}
+
+export function useRecomputeMutation() {
+  const refresh = useDerivedDataRefresh()
+  return useMutation({
+    mutationFn: () => api.post<RecomputeResult>("/api/admin/metrics/recompute"),
+    onSuccess: refresh,
+  })
+}
+
+export function useRunScanMutation() {
+  const refresh = useDerivedDataRefresh()
+  return useMutation({
+    mutationFn: () => api.post<ScanResult>("/api/admin/scan"),
+    onSuccess: refresh,
   })
 }
 

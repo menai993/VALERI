@@ -9,12 +9,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "./client"
 import type {
   Approval,
+  ApplyResponse,
   ArticleRow,
   ChatHistory,
   ChatSession,
   CustomerDetail,
   CustomerRow,
   DashboardResponse,
+  DismissResponse,
   Items,
   LostArticleRow,
   OwnerReport,
@@ -171,6 +173,54 @@ export function useSignalFeedbackMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["signals"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+// ── self-configuration (M10) ──────────────────────────────────────────────────
+
+/** Dismiss a signal with a reason → the learned-rule proposal (may auto-apply). */
+export function useDismissSignalMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ signalId, reasonText }: { signalId: number; reasonText: string }) =>
+      api.post<DismissResponse>(`/api/signals/${signalId}/dismiss`, { reason_text: reasonText }),
+    onSuccess: () => {
+      // The signal (and its open task) are dismissed server-side.
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["signals"] })
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+/** The one-tap confirm: activate a pending_confirm rule (writes the decision). */
+export function useApplyRuleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (learnedRuleId: number) =>
+      api.post<ApplyResponse>("/api/rules/apply", { learned_rule_id: learnedRuleId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["signals"] })
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+/** Undo a learned rule (status → reverted, writes a new decision). */
+export function useUndoRuleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (learnedRuleId: number) =>
+      api.post<ApplyResponse>(`/api/learned-rules/${learnedRuleId}/undo`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["signals"] })
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
     },
   })
 }

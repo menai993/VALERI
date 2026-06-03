@@ -1,4 +1,6 @@
-/** M9 (web): ChatMessage renders the full envelope; the task-draft card is visible. */
+/** M9 (web): ChatMessage renders the full envelope; the task-draft card is visible.
+ * M10: the inline rule-proposal card (register + description + one-tap confirm). */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it } from "vitest"
 
@@ -8,6 +10,18 @@ import { useLanguageStore } from "@/store/ui"
 
 function withI18n(ui: React.ReactElement) {
   return render(<I18nProvider>{ui}</I18nProvider>)
+}
+
+/** The M10 rule-proposal card mounts a mutation hook → needs a QueryClientProvider. */
+function withProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider>{ui}</I18nProvider>
+    </QueryClientProvider>,
+  )
 }
 
 beforeEach(() => {
@@ -75,5 +89,66 @@ describe("ChatMessage", () => {
   it("shows the thinking state while streaming", () => {
     withI18n(<ChatMessage role="assistant" content="" pending register={null} />)
     expect(screen.getByText("VALERI analizira…")).toBeInTheDocument()
+  })
+
+  it("renders the inline rule-proposal card (M10): pending → preporuka + Primijeni", () => {
+    withProviders(
+      <ChatMessage
+        role="assistant"
+        content="Predloženo pravilo: Ne prijavljuj pad prometa za kafiće. Potrebna je vaša potvrda."
+        register="preporuka"
+        card={{
+          card_type: "rule_proposal",
+          payload: {
+            applied: false,
+            requires_confirm: true,
+            learned_rule_id: 5,
+            description: "Ne prijavljuj pad prometa za kafiće — sezonska djelatnost.",
+            effect_estimate: { window_days: 90, total_signals: 7, by_rule: {} },
+            interpretation_confidence: 0.85,
+            register: "preporuka",
+            decision_id: null,
+          },
+        }}
+      />,
+    )
+
+    const card = screen.getByTestId("rule-proposal-card")
+    expect(card).toHaveTextContent("Ne prijavljuj pad prometa za kafiće")
+    expect(card).toHaveTextContent("Čeka potvrdu")
+    // The SQL blast radius is shown verbatim with provenance.
+    expect(card).toHaveTextContent("7")
+    expect(card).toHaveTextContent("90")
+    expect(card).toHaveTextContent("brojke iz baze · SQL")
+    // The one-tap confirm is offered (nothing applied silently).
+    expect(screen.getByTestId("chat-apply-rule")).toBeEnabled()
+  })
+
+  it("renders the inline rule-proposal card (M10): auto-applied → akcija, no confirm button", () => {
+    withProviders(
+      <ChatMessage
+        role="assistant"
+        content="Pravilo je primijenjeno (reverzibilno)."
+        register="akcija"
+        card={{
+          card_type: "rule_proposal",
+          payload: {
+            applied: true,
+            requires_confirm: false,
+            learned_rule_id: 6,
+            description: "Ne prijavljuj pad prometa za ovog kupca — sezonski obrazac.",
+            effect_estimate: { window_days: 90, total_signals: 1, by_rule: {} },
+            interpretation_confidence: 0.9,
+            register: "akcija",
+            decision_id: 11,
+          },
+        }}
+      />,
+    )
+
+    const card = screen.getByTestId("rule-proposal-card")
+    expect(card).toHaveTextContent("Primijenjeno (reverzibilno)")
+    expect(card).toHaveTextContent("poništiti")
+    expect(screen.queryByTestId("chat-apply-rule")).not.toBeInTheDocument()
   })
 })

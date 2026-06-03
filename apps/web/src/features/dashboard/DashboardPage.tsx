@@ -257,7 +257,7 @@ export function DashboardPage() {
         </SectionCard>
       </div>
 
-      {/* Dismissing an insight opens the RuleCard (preview in M8; apply lands in M10) */}
+      {/* Dismissing an insight opens the RuleCard (M10): reason → proposal → apply/undo */}
       <RuleCard
         insight={dismissTarget}
         open={dismissTarget !== null}

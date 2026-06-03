@@ -18,8 +18,9 @@ from valeri_api.tools.explain_signal import EXPLAIN_SIGNAL
 from valeri_api.tools.get_customer_360 import GET_CUSTOMER_360
 from valeri_api.tools.list_signals import LIST_SIGNALS
 from valeri_api.tools.log import log_tool_call
+from valeri_api.tools.propose_rule_change import PROPOSE_RULE_CHANGE
 from valeri_api.tools.query_metric import QUERY_METRIC
-from valeri_api.tools.stubs import PROPOSE_RULE_CHANGE, START_INVESTIGATION
+from valeri_api.tools.stubs import START_INVESTIGATION
 
 logger = logging.getLogger("valeri.tools.catalog")
 

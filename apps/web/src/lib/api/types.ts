@@ -252,6 +252,83 @@ export interface RuleConfigEntry {
   updated_at: string | null
 }
 
+// ── self-configuration (M10) ──────────────────────────────────────────────────
+
+/** The resolved scope of a learned rule (data-model.md scope JSONB shape). */
+export interface RuleScope {
+  kind: "once" | "entity" | "category" | "threshold" | "conditional"
+  rule?: string | null
+  entity_type?: string | null
+  entity_id?: number | null
+  category?: string | null
+  metric?: string | null
+  op?: string | null
+  value?: number | null
+  when?: string | null
+}
+
+/** SQL-computed blast radius of a proposed rule. */
+export interface EffectEstimate {
+  window_days: number
+  total_signals: number
+  by_rule: Record<string, number>
+}
+
+export interface LearnedRule {
+  id: number
+  source_signal_id: number | null
+  source_message_id: number | null
+  domain: string
+  rule_type: string
+  scope: RuleScope
+  description: string
+  effect_estimate: EffectEstimate | null
+  status: "pending_confirm" | "active" | "reverted" | "expired"
+  autonomy: "auto_applied" | "confirmed"
+  created_by: number | null
+  created_at: string
+  expires_at: string | null
+  suppression_count: number
+}
+
+export interface Decision {
+  id: number
+  kind: string
+  actor: "valeri" | "user"
+  summary: string
+  payload: Record<string, unknown> | null
+  reversible: boolean
+  reverted_decision_id: number | null
+  created_at: string
+}
+
+/** What Tier-1 proposed from the dismissal reason (description is Bosnian). */
+export interface RuleChangeProposal {
+  rule_type: string
+  scope: RuleScope
+  description: string
+  interpretation_confidence: number
+}
+
+/** POST /signals/{id}/dismiss response: the proposal + whether it already applied. */
+export interface DismissResponse {
+  signal_id: number
+  proposal: RuleChangeProposal
+  effect_estimate: EffectEstimate
+  requires_confirm: boolean
+  applied: boolean
+  learned_rule: LearnedRule
+  decision_id: number | null
+  register: "preporuka" | "akcija"
+}
+
+/** POST /rules/apply and /learned-rules/{id}/undo response. */
+export interface ApplyResponse {
+  learned_rule: LearnedRule
+  decision: Decision
+  register: "akcija"
+}
+
 // ── generic list shapes ───────────────────────────────────────────────────────
 
 export interface Paginated<T> {

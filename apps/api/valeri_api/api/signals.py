@@ -1,8 +1,8 @@
 """Signals API (M8): list/detail + feedback — per docs/api-spec.md.
 
-All authenticated roles; reps see only their own customers' signals. The
-self-config dismissal endpoint (POST /signals/{id}/dismiss → learned-rule draft)
-lands in M10; the M8 UI RuleCard is preview-only (D3).
+All authenticated roles; reps see only their own customers' signals.
+M10 adds POST /signals/{id}/dismiss: a dismissal + reason becomes a structured,
+possibly auto-applied learned rule (the self-configuration loop).
 """
 
 from typing import Annotated, Any
@@ -16,6 +16,7 @@ from valeri_api.audit.serialization import jsonable
 from valeri_api.audit.task_log import log_task_event
 from valeri_api.auth.deps import CurrentUser, visible_customer_ids
 from valeri_api.db import get_session
+from valeri_api.selfconfig.schemas import DismissRequest, DismissResponse
 from valeri_api.signals.models import TaskFeedback
 
 router = APIRouter()
@@ -193,3 +194,59 @@ def add_signal_feedback(
     return SignalFeedbackRead(
         signal_id=signal_id, task_id=row["task_id"], useful=body.useful, reason=body.reason
     )
+
+
+# ── M10: dismissal → self-configuration ───────────────────────────────────────
+
+
+@router.post("/signals/{signal_id}/dismiss", response_model=DismissResponse)
+def dismiss_signal(
+    signal_id: int,
+    body: DismissRequest,
+    session: Annotated[Session, Depends(get_session)],
+    user: CurrentUser,
+) -> DismissResponse:
+    """Dismiss a signal with a reason → a structured, possibly auto-applied learned rule.
+
+    RBAC (spec D5): owner/admin always; a sales_rep only for their own customers'
+    signals; finance never. Low-stakes proposals auto-apply (D1); broad/vague ones
+    return requires_confirm for the one-tap /rules/apply.
+    """
+    from valeri_api.selfconfig.proposer import (
+        ProposalFailed,
+        SignalNotFound,
+        propose_from_dismissal,
+    )
+
+    if user.role == "finance":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "forbidden", "message": "Finansije ne upravljaju signalima"},
+        )
+
+    # Rep scope check on the signal's customer (fail closed).
+    scope = visible_customer_ids(user, session)
+    if scope is not None:
+        owner_customer = session.execute(
+            text("SELECT customer_id FROM app.signal WHERE id = :id"), {"id": signal_id}
+        ).scalar()
+        if owner_customer is None or owner_customer not in scope:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "forbidden", "message": "Nemate pristup ovom signalu"},
+            )
+
+    try:
+        response = propose_from_dismissal(session, signal_id, body.reason_text, user)
+    except SignalNotFound as error:
+        raise HTTPException(
+            status_code=404, detail={"code": "not_found", "message": str(error)}
+        ) from error
+    except ProposalFailed as error:
+        session.commit()  # the dismissal itself still stands even if the proposal failed
+        raise HTTPException(
+            status_code=502, detail={"code": "proposal_failed", "message": str(error)}
+        ) from error
+
+    session.commit()
+    return response

@@ -1,6 +1,6 @@
 # Spec — M10: Self-configuration loop ("ignore that" → reversible rule)
 
-**Milestone:** M10 · **Builds on:** M9 (chat + tool catalog + `app.decision`), M4 (scanner suppression hook) · **Status:** approved (D1–D6 OK'd by owner, 2026-06-03)
+**Milestone:** M10 · **Builds on:** M9 (chat + tool catalog + `app.decision`), M4 (scanner suppression hook) · **Status:** implemented (11 selfconfig + 7 tool tests; full backend + web suites green, 2026-06-03)
 
 ## 1. Objective
 

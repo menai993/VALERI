@@ -1,23 +1,11 @@
-"""Tests for the M10/M13 stub tools: stable contract, no side effects, still logged."""
+"""Tests for the M13 stub tool: stable contract, no side effects, still logged.
 
-from sqlalchemy import text
+propose_rule_change graduated to a real tool in M10 — its tests live in
+tests/tools/test_propose_rule_change.py.
+"""
 
 from tests.tools.conftest import tool_log_rows
 from valeri_api.tools.catalog import dispatch
-
-
-def test_propose_rule_change_stub(owner_context) -> None:
-    """The stub answers 'not available until M10' and mutates nothing."""
-    session = owner_context.session
-    result = dispatch(
-        owner_context, "propose_rule_change", {"reason": "Sezonski kupac, ne treba signal"}
-    )
-    assert result.ok
-    assert result.output["available"] is False
-    assert result.output["milestone"] == "M10"
-
-    # No learned rule / decision side effects.
-    assert session.execute(text("SELECT COUNT(*) FROM app.learned_rule")).scalar() == 0
 
 
 def test_start_investigation_stub(owner_context) -> None:
@@ -33,13 +21,10 @@ def test_start_investigation_stub(owner_context) -> None:
 def test_stub_calls_are_logged(owner_context) -> None:
     """Even no-op stubs leave an audit trail."""
     session = owner_context.session
-    before_rule = len(tool_log_rows(session, "propose_rule_change"))
     before_inv = len(tool_log_rows(session, "start_investigation"))
 
-    dispatch(owner_context, "propose_rule_change", {"reason": "test"})
     dispatch(owner_context, "start_investigation", {"question": "test"})
 
-    assert len(tool_log_rows(session, "propose_rule_change")) == before_rule + 1
     assert len(tool_log_rows(session, "start_investigation")) == before_inv + 1
 
 

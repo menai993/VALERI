@@ -211,14 +211,35 @@ def test_hand_inserted_learned_rule_suppresses_the_right_signal(db_engine, seed_
         session.commit()
 
     try:
-        decline_customers = {row.customer_id for row in _signals(db_engine, "customer_decline")}
-        # The suppressed customer has NO signal …
-        assert suppressed_customer not in decline_customers, "suppression did not hide the signal"
+        # M10: the suppressed detection is PERSISTED with status='suppressed'
+        # (evidence kept for the auditor) — never as an open (new/tasked) signal.
+        open_decline_customers = {
+            row.customer_id
+            for row in _signals(db_engine, "customer_decline")
+            if row.status in ("new", "tasked")
+        }
+        assert (
+            suppressed_customer not in open_decline_customers
+        ), "suppression did not hide the signal"
         # … while the other planted declines still fire …
         for customer_id in other_decline_customers:
-            assert customer_id in decline_customers, "suppression hid the wrong signal"
-        # … and the scan counted the suppression.
+            assert customer_id in open_decline_customers, "suppression hid the wrong signal"
+        # … and the scan counted + recorded the suppression (signal + hit).
         assert result.total_suppressed >= 1
+        with db_engine.connect() as conn:
+            suppressed_row = conn.execute(
+                text(
+                    "SELECT id FROM app.signal WHERE rule = 'customer_decline' "
+                    "AND customer_id = :cid AND status = 'suppressed'"
+                ),
+                {"cid": suppressed_customer},
+            ).scalar()
+            assert suppressed_row is not None, "suppressed signal must be persisted (M10)"
+            hit_count = conn.execute(
+                text("SELECT COUNT(*) FROM app.suppression_hit WHERE signal_id = :sid"),
+                {"sid": suppressed_row},
+            ).scalar()
+            assert hit_count >= 1, "every suppression writes a suppression_hit (M10)"
 
         # An expired suppression must NOT hide anything: expire it and rescan.
         with Session(db_engine) as session:
@@ -227,10 +248,12 @@ def test_hand_inserted_learned_rule_suppresses_the_right_signal(db_engine, seed_
             )
             rescan = run_scan(session, as_of=as_of, recompute=False, create_tasks=False)
             session.commit()
-        decline_customers_after = {
-            row.customer_id for row in _signals(db_engine, "customer_decline")
+        open_after_expiry = {
+            row.customer_id
+            for row in _signals(db_engine, "customer_decline")
+            if row.status in ("new", "tasked")
         }
-        assert suppressed_customer in decline_customers_after, "expired suppression still active"
+        assert suppressed_customer in open_after_expiry, "expired suppression still active"
         assert rescan.total_inserted >= 1
     finally:
         _restore_seed(db_engine, seed_data)

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from valeri_api.auth.deps import visible_customer_ids
 from valeri_api.auth.models import AppUser
+from valeri_api.llm.client import LLMClient
 
 
 class ToolError(Exception):
@@ -29,11 +30,17 @@ class ToolPermissionError(ToolError):
 
 @dataclass
 class ToolContext:
-    """Everything a tool may use: the DB session, the calling user, the chat message."""
+    """Everything a tool may use: the DB session, the calling user, the chat message.
+
+    `llm_client` is the caller's gateway client (the conversation layer passes its
+    own); tools that make LLM calls use it so the whole request shares one client.
+    None → the tool falls back to the production factory.
+    """
 
     session: Session
     user: AppUser
     message_id: int | None = None
+    llm_client: LLMClient | None = None
 
     def visible_customers(self) -> set[int] | None:
         """RBAC row scope: None = unrestricted; a set for sales reps (fail closed)."""

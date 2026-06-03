@@ -84,7 +84,9 @@ def handle_message(
 
     # ── 5. dispatch the tool (RBAC + validation + logging inside) ────────────
     params = _resolve_param_refs(classification.params, context)
-    tool_context = ToolContext(session=session, user=user, message_id=user_message.id)
+    tool_context = ToolContext(
+        session=session, user=user, message_id=user_message.id, llm_client=client
+    )
 
     events.append(SSEEvent(type="tool_call", data={"tool": tool_name, "params": params}))
     tool_result = dispatch(tool_context, tool_name, params)
@@ -100,10 +102,12 @@ def handle_message(
         "narration_source": source,
     }
 
-    # A successfully created task shows up as an inline card (akcija + status).
+    # Successful mutations show up as inline cards (register + status visible).
     card: dict[str, Any] | None = None
     if tool_result.ok and tool_name == "create_task_draft":
         card = {"card_type": "task_draft", "payload": tool_result.output}
+    elif tool_result.ok and tool_name == "propose_rule_change":
+        card = {"card_type": "rule_proposal", "payload": tool_result.output}
 
     return _finish(
         session,

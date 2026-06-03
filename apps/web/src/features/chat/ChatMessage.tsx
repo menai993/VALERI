@@ -2,15 +2,70 @@
  * ChatMessage (frontend-spec §4): one thread bubble.
  *
  * Assistant messages carry the full discipline: RegisterChip + the narrative +
- * the tool-call line + an inline task-draft card when an action ran.
+ * the tool-call line + an inline card when an action ran (task draft, or the
+ * M10 rule proposal with its one-tap confirm).
  */
 import { Bot, CheckCircle2, User, Wrench, XCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
-import type { ChatToolCall, Register } from "@/lib/api/types"
+import { useApplyRuleMutation } from "@/lib/api/queries"
+import type { ChatToolCall, EffectEstimate, Register } from "@/lib/api/types"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+
+/**
+ * Inline self-config card (M10): the chat feedback_config intent produced a rule
+ * proposal — show what happened (applied / pending) and offer the one-tap confirm.
+ * Separate component so the mutation hook only mounts when the card exists.
+ */
+function RuleProposalCard({ payload }: { payload: Record<string, unknown> }) {
+  const t = useT()
+  const apply = useApplyRuleMutation()
+  const applied = Boolean(payload.applied) || apply.isSuccess
+  const effect = (payload.effect_estimate ?? null) as EffectEstimate | null
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md bg-surface-2 p-3"
+      data-testid="rule-proposal-card"
+    >
+      <div className="flex items-center gap-2">
+        <RegisterChip register={applied ? "akcija" : "preporuka"} />
+        <Badge>{applied ? t.rule_card.status_applied : t.rule_card.status_pending}</Badge>
+      </div>
+
+      {/* The Bosnian description Tier-1 wrote from the user's feedback. */}
+      <span className="text-sm font-medium text-text">{String(payload.description)}</span>
+
+      {effect && (
+        <span className="text-[11.5px] text-text-3">
+          {t.rule_card.effect_label}: <span className="tnum">{effect.total_signals}</span>{" "}
+          {t.rule_card.effect_signals} <span className="tnum">{effect.window_days}</span>{" "}
+          {t.rule_card.effect_days} · {t.app.sql_footer}
+        </span>
+      )}
+
+      {applied ? (
+        <span className="text-xs text-text-3">{t.rule_card.applied_note}</span>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="positive"
+            size="sm"
+            onClick={() => apply.mutate(Number(payload.learned_rule_id))}
+            disabled={apply.isPending}
+            data-testid="chat-apply-rule"
+          >
+            {t.rule_card.apply}
+          </Button>
+          {apply.isError && <span className="text-xs text-down">{t.rule_card.error}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export interface ChatMessageProps {
   role: "user" | "assistant"
@@ -96,6 +151,11 @@ export function ChatMessage({
               {t.chat.task_created} · #{String(card.payload.task_id)}
             </span>
           </div>
+        )}
+
+        {/* Inline self-config rule card (M10 — visible, reversible, confirmable). */}
+        {!isUser && card?.card_type === "rule_proposal" && (
+          <RuleProposalCard payload={card.payload} />
         )}
       </div>
     </div>

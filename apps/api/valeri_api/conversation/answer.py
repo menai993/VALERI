@@ -29,7 +29,7 @@ _TOOL_REGISTERS: dict[str, str] = {
     "explain_signal": "analiza",
     "get_customer_360": "analiza",
     "create_task_draft": "akcija",
-    "propose_rule_change": "analiza",
+    "propose_rule_change": "preporuka",
     "start_investigation": "analiza",
 }
 
@@ -66,12 +66,19 @@ def narrate_answer(
             "template",
         )
 
-    # Stub tools (M10/M13) carry their own fixed Bosnian message — narrating it
-    # with an LLM would only add cost (CLAUDE.md cost conventions).
-    if tool_result.tool in ("propose_rule_change", "start_investigation"):
+    # The investigation stub (M13) carries its own fixed message; rule proposals
+    # (M10) carry an already-LLM-written description — neither needs re-narration
+    # (CLAUDE.md cost conventions).
+    if tool_result.tool == "start_investigation":
         return (
             _template_answer(tool_result.tool, tool_result.output),
             _TOOL_REGISTERS.get(tool_result.tool, "analiza"),
+            "template",
+        )
+    if tool_result.tool == "propose_rule_change":
+        return (
+            _template_answer(tool_result.tool, tool_result.output),
+            tool_result.output.get("register", "preporuka"),
             "template",
         )
 
@@ -162,7 +169,25 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
             f"komercijalisti kupca. Zadatak je vidljiv u listi zadataka i može se odbaciti."
         )
 
-    if tool in ("propose_rule_change", "start_investigation"):
+    if tool == "propose_rule_change":
+        effect = output.get("effect_estimate", {})
+        radius = (
+            f" Sakrilo bi {effect.get('total_signals')} signala u zadnjih "
+            f"{effect.get('window_days')} dana."
+            if effect.get("total_signals") is not None
+            else ""
+        )
+        if output.get("applied"):
+            return (
+                f"Pravilo je primijenjeno (reverzibilno): {output['description']}{radius} "
+                f"Možete ga poništiti u bilo kojem trenutku."
+            )
+        return (
+            f"Predloženo pravilo: {output['description']}{radius} "
+            f"Potrebna je vaša potvrda da se primijeni."
+        )
+
+    if tool == "start_investigation":
         return output.get("message", "Ova funkcionalnost stiže u kasnijem milestone-u.")
 
     return f"Podaci iz baze: {output}"

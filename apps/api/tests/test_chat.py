@@ -36,16 +36,22 @@ class ChatFakeLLMClient:
       number contract always holds — like a rule-following model.
     """
 
-    def __init__(self, intent: dict) -> None:
+    def __init__(self, intent: dict, proposal: dict | None = None) -> None:
         self.intent_json = json.dumps(intent, ensure_ascii=False)
+        self.proposal_json = json.dumps(proposal, ensure_ascii=False) if proposal else None
         self.captured: list[dict[str, str]] = []
         self.model = "fake-tier1"
 
     def complete(self, system: str, user: str) -> LLMResponse:
         self.captured.append({"system": system, "user": user})
+        pseudonym = re.search(r"Kupac-[0-9a-f]{6}", user)
         if "usmjerivač namjera" in system:
             text_out = self.intent_json
-            pseudonym = re.search(r"Kupac-[0-9a-f]{6}", user)
+            if pseudonym:
+                text_out = text_out.replace("{{KUPAC}}", pseudonym.group(0))
+        elif "strukturator pravila" in system and self.proposal_json:
+            # M10: the rule-change proposer prompt.
+            text_out = self.proposal_json
             if pseudonym:
                 text_out = text_out.replace("{{KUPAC}}", pseudonym.group(0))
         else:
@@ -435,26 +441,56 @@ def test_action_intent_creates_task_draft(chat_session) -> None:
     assert decision.reversible is True
 
 
-def test_stub_intents_reply_milestone_note(chat_session) -> None:
-    """feedback_config / investigation intents reply honestly with the milestone note."""
+def test_feedback_config_intent_proposes_real_rule(chat_session) -> None:
+    """M10: the feedback_config intent runs the REAL propose_rule_change tool."""
     session, owner, _, _ = chat_session
 
-    # feedback_config → propose_rule_change stub (the intent's default tool).
+    # The chat fake serves the intent prompt AND the proposer prompt.
     feedback_fake = ChatFakeLLMClient(
         intent={
             "intent": "feedback_config",
             "tool": None,
-            "params": {"reason": "Sezonski kupac"},
+            "params": {"reason": "Svi kafići su sezonski, nemoj ih prijavljivati"},
             "confidence": 0.8,
-        }
+        },
+        proposal={
+            "rule_type": "suppress",
+            "scope": {"kind": "category", "rule": "customer_decline", "category": "kafić"},
+            "description": "Ne prijavljuj pad prometa za kafiće — sezonska djelatnost.",
+            "interpretation_confidence": 0.85,
+        },
     )
     conversation = _new_conversation(session, owner)
     events = handle_message(
-        session, owner, conversation, "Ne prijavljuj mi više sezonske kafiće", client=feedback_fake
+        session,
+        owner,
+        conversation,
+        "Ne prijavljuj mi više sezonske kafiće",
+        client=feedback_fake,
     )
-    assert "M10" in _reply_text(events)
 
-    # investigation → start_investigation stub.
+    # A category proposal requires confirm → preporuka reply + a rule-proposal card.
+    reply = _reply_text(events)
+    assert "kafiće" in reply or "kafić" in reply
+    assert "potvrda" in reply.lower()
+    assert _reply_register(events) == "preporuka"
+
+    card = next(event for event in events if event.type == "card")
+    assert card.data["card_type"] == "rule_proposal"
+    assert card.data["payload"]["requires_confirm"] is True
+
+    # The pending rule is persisted; nothing is active, no decision yet.
+    pending = session.execute(
+        text("SELECT status FROM app.learned_rule ORDER BY id DESC LIMIT 1")
+    ).scalar()
+    assert pending == "pending_confirm"
+    assert session.execute(text("SELECT COUNT(*) FROM app.decision")).scalar() == 0
+
+
+def test_investigation_intent_replies_milestone_note(chat_session) -> None:
+    """The investigation stub still answers honestly with the M13 note."""
+    session, owner, _, _ = chat_session
+
     investigation_fake = ChatFakeLLMClient(
         intent={
             "intent": "investigation",
@@ -463,6 +499,7 @@ def test_stub_intents_reply_milestone_note(chat_session) -> None:
             "confidence": 0.8,
         }
     )
+    conversation = _new_conversation(session, owner)
     events = handle_message(
         session, owner, conversation, "Istraži zašto pada promet u maju", client=investigation_fake
     )

@@ -9,6 +9,7 @@ import {
   FileBarChart,
   Home,
   MessageSquare,
+  NotebookPen,
   Package,
   Plus,
   Settings,
@@ -35,6 +36,7 @@ export function Sidebar() {
     { to: "/artikli", label: t.nav.artikli, icon: Package },
     { to: "/prilike", label: t.nav.prilike, icon: Briefcase, soon: true },
     ...(isRep ? [] : [{ to: "/ai-report", label: t.nav.ai_report, icon: FileBarChart }]),
+    { to: "/zabiljeske", label: t.nav.zabiljeske, icon: NotebookPen },
     { to: "/postavke", label: t.nav.postavke, icon: Settings },
   ]
 

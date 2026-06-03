@@ -10,6 +10,7 @@ import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardS
 import { ComboChart } from "@/components/widgets/ComboChart"
 import { ConfidenceLabel } from "@/components/widgets/ConfidenceLabel"
 import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
+import { KnowledgePanel } from "@/components/widgets/KnowledgePanel"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
 import { RiskBadge } from "@/components/widgets/RiskBadge"
 import { useCustomer } from "@/lib/api/queries"
@@ -129,6 +130,9 @@ export function CustomerDetailPage() {
           </div>
         </Card>
       </div>
+
+      {/* Šta VALERI zna — the conversational knowledge base (CI1) */}
+      {customerId !== null && <KnowledgePanel customerId={customerId} />}
 
       {/* Signals + tasks for this customer — AI surfaces: every row carries
           register + confidence + evidence (principles 2/3/9). */}

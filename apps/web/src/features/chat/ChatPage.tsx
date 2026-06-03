@@ -6,6 +6,7 @@
  * the GlobalSearch (?q= prefills and sends the question).
  */
 import { useEffect, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { MessageSquarePlus, Send } from "lucide-react"
 import { useSearchParams } from "react-router"
 
@@ -24,6 +25,7 @@ import { ChatMessage, type ChatMessageProps } from "./ChatMessage"
 
 export function ChatPage() {
   const t = useT()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const sessions = useChatSessions()
   const createSession = useCreateChatSession()
@@ -90,9 +92,11 @@ export function ChatPage() {
 
     setLiveMessages((previous) => [
       ...previous,
-      { role: "assistant", content: replyText, register, toolCalls, card },
+      { role: "assistant", content: replyText, register, toolCalls, card, capture: true },
     ])
     setStreaming(false)
+    // CI1: capture runs in the background server-side; refresh the review queue.
+    queryClient.invalidateQueries({ queryKey: ["kb", "pending"] })
   }
 
   function openSession(sessionId: number) {

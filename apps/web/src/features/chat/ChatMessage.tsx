@@ -9,6 +9,7 @@ import { Bot, CheckCircle2, User, Wrench, XCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CaptureChip } from "@/components/widgets/CaptureChip"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
 import { useApplyRuleMutation } from "@/lib/api/queries"
 import type { ChatToolCall, EffectEstimate, Register } from "@/lib/api/types"
@@ -74,6 +75,7 @@ export interface ChatMessageProps {
   toolCalls?: ChatToolCall[] | null
   card?: { card_type: string; payload: Record<string, unknown> } | null
   pending?: boolean
+  capture?: boolean
 }
 
 export function ChatMessage({
@@ -83,6 +85,7 @@ export function ChatMessage({
   toolCalls,
   card,
   pending,
+  capture,
 }: ChatMessageProps) {
   const t = useT()
   const isUser = role === "user"
@@ -157,6 +160,9 @@ export function ChatMessage({
         {!isUser && card?.card_type === "rule_proposal" && (
           <RuleProposalCard payload={card.payload} />
         )}
+
+        {/* CI1 transparency: VALERI captures knowledge in the background. */}
+        {!isUser && capture && <CaptureChip />}
 
         {/* Inline investigation card (M13 — links to AI Report → Istrage). */}
         {!isUser && card?.card_type === "investigation" && (

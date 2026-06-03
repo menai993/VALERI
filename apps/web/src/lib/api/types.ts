@@ -480,6 +480,95 @@ export interface ActivityRead {
   at: string
 }
 
+// ── knowledge base / Client Intelligence (CI1) ────────────────────────────────
+
+export type FactSource = "data" | "inferred" | "stated"
+export type KbStatus = "proposed" | "active" | "superseded" | "rejected"
+export type KbItemType = "fact" | "event"
+
+/** A captured fact or commercial event (carries the AI envelope). */
+export interface KbItem {
+  item_type: KbItemType
+  id: number
+  customer_id: number | null
+  customer_name: string | null
+  mentioned_name: string | null
+  title: string
+  detail: Record<string, unknown> | null
+  register: Register
+  source: FactSource
+  confidence: string
+  conf_band: ConfBand
+  status: KbStatus
+  evidence_text: string | null
+  source_message_id: number | null
+  created_at: string
+}
+
+/** A captured customer↔customer relationship (a suggested link until confirmed). */
+export interface KbRelationship {
+  item_type: "relationship"
+  id: number
+  from_customer_id: number
+  from_name: string | null
+  to_customer_id: number
+  to_name: string | null
+  rel_type: string
+  register: Register
+  source: FactSource
+  confidence: string
+  conf_band: ConfBand
+  status: KbStatus
+  evidence_text: string | null
+  created_at: string
+}
+
+export type ClarKind = "entity" | "reference" | "merge" | "value" | "conflict" | "new_entity"
+
+export interface KbClarificationOption {
+  label: string
+  action: string
+  customer_id?: number
+}
+
+export interface KbClarification {
+  id: number
+  kind: ClarKind
+  question: string
+  options: KbClarificationOption[]
+  target_record_ref: string
+  status: string
+  created_at: string
+}
+
+export interface KbProfile {
+  customer_id: number
+  summary: string | null
+  decision_maker: string | null
+  preferences: Record<string, unknown> | null
+  updated_at: string
+}
+
+export interface CaptureResponse {
+  auto_saved: (KbItem | KbRelationship)[]
+  proposed: (KbItem | KbRelationship)[]
+  clarifications: KbClarification[]
+}
+
+export interface KbPendingQueue {
+  facts: KbItem[]
+  events: KbItem[]
+  relationships: KbRelationship[]
+  clarifications: KbClarification[]
+}
+
+export interface KbKnowledge {
+  profile: KbProfile | null
+  facts: KbItem[]
+  events: KbItem[]
+  relationships: KbRelationship[]
+}
+
 // ── investigations (M13) ──────────────────────────────────────────────────────
 
 export type InvestigationStatus = "queued" | "running" | "needs_input" | "done" | "failed"

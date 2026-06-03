@@ -1,6 +1,6 @@
 # Spec — CI1: Knowledge base & conversational capture
 
-**Track:** Client Intelligence (optional, owner-approved) · **Builds on:** M6 (LLM gateway + masking + `narrate_structured` + `ai_log`), M9 (conversation/chat + server-side entity resolution + tool catalog), M10–M11 (graduated autonomy + reversible `app.decision` + confirmation discipline) · **Status:** draft (awaiting owner review)
+**Track:** Client Intelligence (optional, owner-approved) · **Builds on:** M6 (LLM gateway + masking + `narrate_structured` + `ai_log`), M9 (conversation/chat + server-side entity resolution + tool catalog), M10–M11 (graduated autonomy + reversible `app.decision` + confirmation discipline) · **Status:** implemented (D1–D10 defaults OK'd by owner, 2026-06-03)
 
 ## 1. Objective
 

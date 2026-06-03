@@ -11,6 +11,10 @@ import type {
   ActivityKind,
   ActivityRead,
   Approval,
+  KbClarification,
+  KbItemType,
+  KbKnowledge,
+  KbPendingQueue,
   ApplyResponse,
   ArticleRow,
   ChatHistory,
@@ -415,6 +419,70 @@ export function useLogActivity() {
       queryClient.invalidateQueries({ queryKey: ["reps", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
+  })
+}
+
+// ── knowledge base / Client Intelligence (CI1) ────────────────────────────────
+
+/** The 'Šta VALERI zna' panel for one customer (profile + facts + events + relationships). */
+export function useCustomerKnowledge(customerId: number | null) {
+  return useQuery<KbKnowledge>({
+    queryKey: ["kb", "knowledge", customerId],
+    queryFn: () => api.get<KbKnowledge>(`/api/customers/${customerId}/knowledge`),
+    enabled: customerId !== null,
+    retry: false,
+  })
+}
+
+/** The confirmation queue (Zabilješke): proposed records + pending clarifications. */
+export function useKbPending() {
+  return useQuery<KbPendingQueue>({
+    queryKey: ["kb", "pending"],
+    queryFn: () => api.get<KbPendingQueue>("/api/kb/pending"),
+    retry: false,
+  })
+}
+
+function useKbInvalidate() {
+  const queryClient = useQueryClient()
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["kb"] })
+    queryClient.invalidateQueries({ queryKey: ["decisions"] })
+  }
+}
+
+/** Confirm a proposed fact/event/relationship → active. */
+export function useConfirmKbItem() {
+  const invalidate = useKbInvalidate()
+  return useMutation({
+    mutationFn: ({ itemId, itemType }: { itemId: number; itemType: KbItemType | "relationship" }) =>
+      api.post(`/api/kb/items/${itemId}/confirm?item_type=${itemType}`),
+    onSuccess: invalidate,
+  })
+}
+
+/** Reject a proposed record. */
+export function useRejectKbItem() {
+  const invalidate = useKbInvalidate()
+  return useMutation({
+    mutationFn: ({ itemId, itemType }: { itemId: number; itemType: KbItemType | "relationship" }) =>
+      api.post(`/api/kb/items/${itemId}/reject?item_type=${itemType}`),
+    onSuccess: invalidate,
+  })
+}
+
+/** Answer a clarification (link / new prospect / not-a-match). */
+export function useAnswerClarification() {
+  const invalidate = useKbInvalidate()
+  return useMutation({
+    mutationFn: ({
+      clarificationId,
+      option,
+    }: {
+      clarificationId: number
+      option: KbClarification["options"][number]
+    }) => api.post(`/api/kb/clarifications/${clarificationId}/answer`, { option }),
+    onSuccess: invalidate,
   })
 }
 

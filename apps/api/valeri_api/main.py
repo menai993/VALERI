@@ -12,6 +12,7 @@ from valeri_api.api.dashboard import router as dashboard_router
 from valeri_api.api.health import router as health_router
 from valeri_api.api.ingest import router as ingest_router
 from valeri_api.api.investigations import router as investigations_router
+from valeri_api.api.kb import router as kb_router
 from valeri_api.api.metrics import router as metrics_router
 from valeri_api.api.opportunities import router as opportunities_router
 from valeri_api.api.reports import router as reports_router
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     application.include_router(investigations_router, prefix="/api")
     application.include_router(opportunities_router, prefix="/api")
     application.include_router(reps_router, prefix="/api")
+    application.include_router(kb_router, prefix="/api")
 
     @application.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:

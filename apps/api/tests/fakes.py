@@ -47,6 +47,50 @@ class AutoFakeLLMClient:
         )
 
 
+class FakeKbLLM:
+    """A keyed fake for the CI1 capture pipeline: gate / extraction / summary.
+
+    Routes by a marker in the system prompt so one client serves all three KB
+    calls deterministically. Captures every prompt for PII assertions.
+    """
+
+    def __init__(
+        self,
+        *,
+        relevant: bool = True,
+        extraction: dict | None = None,
+        summary: str = "Kupac uredno posluje.",
+        model: str = "fake-tier1",
+    ) -> None:
+        self.relevant = relevant
+        self.extraction = extraction or {
+            "facts": [],
+            "events": [],
+            "relationships": [],
+            "confidence": 0.9,
+        }
+        self.summary = summary
+        self.model = model
+        self.captured: list[dict[str, str]] = []
+
+    def complete(self, system: str, user: str) -> LLMResponse:
+        self.captured.append({"system": system, "user": user})
+        if "filter relevantnosti" in system:
+            body: dict | str = {"relevant": self.relevant}
+        elif "ekstraktor strukturiranog znanja" in system:
+            body = self.extraction
+        elif "profil kupca" in system:
+            body = {"text": self.summary, "register": "analiza"}
+        else:  # any other narration path
+            body = {"text": "Pregled iz baze podataka.", "register": "analiza"}
+        return LLMResponse(
+            text=json.dumps(body, ensure_ascii=False, default=str),
+            model=self.model,
+            tokens=100,
+            latency_ms=50,
+        )
+
+
 class ScriptedFakeLLMClient:
     """Returns scripted responses in order; raises queued exceptions."""
 

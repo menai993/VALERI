@@ -12,6 +12,7 @@ import { CustomerDetailPage } from "@/features/customers/CustomerDetailPage"
 import { ChatPage } from "@/features/chat/ChatPage"
 import { CustomersPage } from "@/features/customers/CustomersPage"
 import { DashboardPage } from "@/features/dashboard/DashboardPage"
+import { ReviewQueuePage } from "@/features/kb/ReviewQueuePage"
 import { LoginPage } from "@/features/login/LoginPage"
 import { OpportunitiesPage } from "@/features/opportunities/OpportunitiesPage"
 import { SettingsPage } from "@/features/settings/SettingsPage"
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
           { path: "/artikli", element: <ArticlesPage /> },
           { path: "/prilike", element: <OpportunitiesPage /> },
           { path: "/ai-report", element: <AIReportPage /> },
+          { path: "/zabiljeske", element: <ReviewQueuePage /> },
           { path: "/chat", element: <ChatPage /> },
           { path: "/postavke", element: <SettingsPage /> },
         ],

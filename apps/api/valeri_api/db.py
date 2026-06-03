@@ -1,6 +1,7 @@
 """SQLAlchemy 2.x engine/session wiring. Models are added from M1 onward."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 
 from sqlalchemy import Engine, create_engine
@@ -29,5 +30,20 @@ def get_session() -> Iterator[Session]:
     session = factory()
     try:
         yield session
+    finally:
+        session.close()
+
+
+@contextmanager
+def session_scope() -> Iterator[Session]:
+    """A standalone session for background work (commits on success, rolls back on error)."""
+    factory = sessionmaker(bind=get_engine())
+    session = factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()

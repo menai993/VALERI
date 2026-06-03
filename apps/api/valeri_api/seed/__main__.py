@@ -47,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
         "--reset", action="store_true", help="truncate core.* tables before loading"
     )
     parser.add_argument(
+        "--no-kb-graph",
+        action="store_true",
+        help="do NOT plant the CI2 demo KB relationships (graph-rule edges)",
+    )
+    parser.add_argument(
         "--manifest-out",
         type=Path,
         default=None,
@@ -60,7 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    config = SeedConfig(rng_seed=args.rng_seed, as_of=args.as_of or datetime.date.today())
+    config = SeedConfig(
+        rng_seed=args.rng_seed,
+        as_of=args.as_of or datetime.date.today(),
+        with_kb_graph=not args.no_kb_graph,  # demo: graph edges on by default
+    )
     print(f"Generating seed (rng_seed={config.rng_seed}, as_of={config.as_of}) ...")
     data = generate(config)
 

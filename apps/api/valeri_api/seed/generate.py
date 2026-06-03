@@ -7,6 +7,7 @@ from valeri_api.seed.articles import generate_articles, generate_categories, sel
 from valeri_api.seed.config import SeedConfig
 from valeri_api.seed.entities import generate_contacts, generate_entities, generate_reps
 from valeri_api.seed.invoices import build_baskets, generate_invoices
+from valeri_api.seed.kb_graph import generate_client_relationships
 from valeri_api.seed.opportunities import generate_opportunities
 from valeri_api.seed.planted import (
     build_manifest,
@@ -55,6 +56,9 @@ def generate(config: SeedConfig) -> SeedData:
     activities = generate_activities(rng, sales_reps, customers, config.as_of)
     revenue_targets = generate_revenue_targets(rng, config.as_of)
 
+    # 7b. CI2 (demo only): confirmed KB relationships so the graph-aware rules fire.
+    client_relationships = generate_client_relationships(plan, customers, config)
+
     # 8. Ground-truth manifest (measured from the generated data).
     manifest = build_manifest(config, plan, customers, invoices, invoice_lines)
 
@@ -75,4 +79,5 @@ def generate(config: SeedConfig) -> SeedData:
         opportunity_stage_history=opportunity_stage_history,
         activities=activities,
         revenue_targets=revenue_targets,
+        client_relationships=client_relationships,
     )

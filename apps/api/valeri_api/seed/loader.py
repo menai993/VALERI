@@ -17,6 +17,7 @@ from valeri_api.domain.models import (
     LegalEntity,
     SalesRep,
 )
+from valeri_api.kb.models import ClientRelationship
 from valeri_api.seed.types import SeedData
 
 # FK-safe insert order: (model, SeedData attribute).
@@ -36,6 +37,7 @@ _INSERT_ORDER = [
     (OpportunityStageHistory, "opportunity_stage_history"),
     (Activity, "activities"),
     (RevenueTarget, "revenue_targets"),
+    (ClientRelationship, "client_relationships"),  # CI2 demo graph edges
 ]
 
 # Tables whose identity sequence must be advanced past the explicit seed IDs.
@@ -52,10 +54,12 @@ _SEQUENCE_TABLES = [
     "app.opportunity",
     "app.opportunity_stage_history",
     "app.activity",
+    "app.client_relationship",
     # revenue_target has a TEXT primary key (period) — no identity sequence to advance.
 ]
 
 _ALL_TABLES = [
+    "app.client_relationship",
     "app.revenue_target",
     "app.activity",
     "app.opportunity_stage_history",

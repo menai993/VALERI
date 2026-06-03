@@ -30,11 +30,13 @@ def detect(session: Session, as_of: datetime.date) -> list[SignalDraft]:
     for members in connected_components(session, GROUP_REL_TYPES):
         if len(members) < min_members:
             continue
-        # Combined turnover vs combined baseline + the worst-ratio member — all SQL.
+        # Combined turnover/baseline/ratio + the worst-ratio member — all SQL.
         row = session.execute(
             text(
                 "SELECT SUM(turnover_60d) AS turnover, "
                 "       SUM(turnover_6m_avg_60d) AS baseline, "
+                "       ROUND(SUM(turnover_60d) / "
+                "             NULLIF(SUM(turnover_6m_avg_60d), 0), 3) AS ratio, "
                 "       (ARRAY_AGG(customer_id ORDER BY "
                 "          turnover_60d / NULLIF(turnover_6m_avg_60d, 0) ASC))[1] AS worst "
                 "FROM core.customer_metrics "
@@ -43,10 +45,9 @@ def detect(session: Session, as_of: datetime.date) -> list[SignalDraft]:
             {"ids": sorted(members)},
         ).one()
 
-        if row.baseline is None or row.baseline == 0 or row.worst is None:
+        if row.ratio is None or row.worst is None:
             continue
-        ratio = row.turnover / row.baseline
-        if ratio >= decline_ratio:
+        if row.ratio >= decline_ratio:
             continue
 
         drafts.append(
@@ -57,7 +58,7 @@ def detect(session: Session, as_of: datetime.date) -> list[SignalDraft]:
                     "members": sorted(members),
                     "group_turnover_60d": str(row.turnover),
                     "group_baseline_60d": str(row.baseline),
-                    "ratio": str(round(ratio, 3)),
+                    "ratio": str(row.ratio),
                     "rel_types": list(GROUP_REL_TYPES),
                 },
                 confidence=confidence,

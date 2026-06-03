@@ -72,3 +72,5 @@ class SeedData:
     # C-CRM2: demo rep activities + the company monthly revenue plan.
     activities: list[dict] = field(default_factory=list)
     revenue_targets: list[dict] = field(default_factory=list)
+    # CI2: confirmed KB relationships for the graph-aware rules (demo only; see config).
+    client_relationships: list[dict] = field(default_factory=list)

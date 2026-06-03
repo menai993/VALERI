@@ -336,10 +336,13 @@ def test_draft_message_no_pii_in_prompt(approval_db, seed_data) -> None:
 @pytest.mark.anyio
 async def test_api_approvals_list_and_decide(approval_db) -> None:
     """GET list/filter + POST decide with 404/409 error envelopes."""
+    from tests.conftest import login
     from valeri_api.main import app
+    from valeri_api.seed.users import OWNER_EMAIL
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, OWNER_EMAIL)  # M8: approvals are owner/admin only
         # List pending approvals.
         listing = await client.get("/api/approvals", params={"status": "pending_approval"})
         assert listing.status_code == 200

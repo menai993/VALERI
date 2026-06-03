@@ -389,13 +389,16 @@ def test_summary_block(reported_db) -> None:
 async def test_api_weekly_and_summary(reported_db) -> None:
     """GET weekly + summary serve the stored snapshot; 404 envelope when absent."""
     engine, report_id, week_start, week_end, _, _ = reported_db
+    from tests.conftest import login
     from valeri_api.main import app
+    from valeri_api.seed.users import OWNER_EMAIL
 
     payload = _payload(engine, report_id)
     stored_kpi = _sections_by_key(payload)["kpi_pregled"]["data"]
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, OWNER_EMAIL)  # M8: report API requires owner/admin/finance
         # The latest stored report.
         response = await client.get("/api/reports/owner/weekly")
         assert response.status_code == 200

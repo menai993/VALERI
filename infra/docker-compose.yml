@@ -34,6 +34,7 @@ services:
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       PII_SALT: ${PII_SALT}
+      AUTH_SECRET: ${AUTH_SECRET}
     depends_on:
       db:
         condition: service_healthy
@@ -66,6 +67,7 @@ services:
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       PII_SALT: ${PII_SALT}
+      AUTH_SECRET: ${AUTH_SECRET}
     depends_on:
       db:
         condition: service_healthy

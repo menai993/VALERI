@@ -1,7 +1,9 @@
 """Owner report API (M7): the stored weekly report + the dashboard summary block.
 
 Numbers in responses are the stored SQL values, passed through — the API never
-returns a figure computed by the LLM. RBAC lands in M8.
+returns a figure computed by the LLM.
+
+RBAC (M8): owner/admin/finance — reps work from their task list, not reports.
 """
 
 import datetime
@@ -11,12 +13,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from valeri_api.auth.deps import require_roles
 from valeri_api.db import get_session
 from valeri_api.reports.builder import extract_summary, week_bounds
 from valeri_api.reports.models import OwnerReport
 from valeri_api.reports.schemas import OwnerReportRead, OwnerReportSummary, ReportSection
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_roles("owner", "admin", "finance"))])
 
 
 def _not_found(message: str) -> HTTPException:

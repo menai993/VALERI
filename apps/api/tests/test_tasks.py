@@ -278,10 +278,13 @@ def test_feedback_persists(tasked_db) -> None:
 async def test_api_endpoints(tasked_db) -> None:
     """List/detail/status/feedback endpoints per api-spec, with the error envelope."""
     engine, _, _ = tasked_db
+    from tests.conftest import login
     from valeri_api.main import app
+    from valeri_api.seed.users import OWNER_EMAIL
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, OWNER_EMAIL)  # M8: tasks API requires authentication
         # List with pagination.
         listing = await client.get("/api/tasks", params={"limit": 5})
         assert listing.status_code == 200

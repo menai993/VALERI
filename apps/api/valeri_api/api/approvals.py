@@ -1,7 +1,10 @@
 """Approvals API (M7): list pending approvals and decide them — per docs/api-spec.md.
 
 Every item is register 'akcija' + an explicit status, so the owner always knows
-whether something has happened. RBAC + decided_by from auth land in M8.
+whether something has happened.
+
+RBAC (M8): owner/admin only — approving customer-facing communication is an
+owner-level decision. decided_by records who decided.
 """
 
 from typing import Annotated
@@ -13,9 +16,10 @@ from sqlalchemy.orm import Session
 from valeri_api.approvals.models import APPROVAL_STATUSES, Approval
 from valeri_api.approvals.schemas import ApprovalDecision, ApprovalListResponse, ApprovalRead
 from valeri_api.approvals.workflow import InvalidTransition, decide
+from valeri_api.auth.deps import CurrentUser, require_roles
 from valeri_api.db import get_session
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_roles("owner", "admin"))])
 
 
 @router.get("/approvals", response_model=ApprovalListResponse)
@@ -43,10 +47,11 @@ def decide_approval(
     approval_id: int,
     body: ApprovalDecision,
     session: Annotated[Session, Depends(get_session)],
+    user: CurrentUser,
 ) -> ApprovalRead:
     """Decide a pending approval (approved/rejected/deferred); records who/when."""
     try:
-        approval = decide(session, approval_id, body.decision, note=body.note)
+        approval = decide(session, approval_id, body.decision, decided_by=user.id, note=body.note)
     except LookupError as error:
         raise HTTPException(
             status_code=404, detail={"code": "not_found", "message": str(error)}

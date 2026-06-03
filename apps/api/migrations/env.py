@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, pool
 
 import valeri_api.approvals.models  # noqa: F401  (registers app.approval)
 import valeri_api.audit.models  # noqa: F401  (registers audit.* models)
+import valeri_api.auth.models  # noqa: F401  (registers app.app_user)
 import valeri_api.domain.models  # noqa: F401  (registers core.* models on Base.metadata)
 import valeri_api.ingest.models  # noqa: F401  (registers staging.* models)
 import valeri_api.reports.models  # noqa: F401  (registers app.owner_report)

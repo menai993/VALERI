@@ -431,17 +431,28 @@ async def test_api_import_and_report_endpoints(
 ) -> None:
     """POST /api/ingest/import (multipart) → import_id; GET report → stats+quality; 404 handled."""
     import httpx
+    from sqlalchemy import insert
 
+    from valeri_api.auth.models import AppUser
     from valeri_api.seed.loader import reset
+    from valeri_api.seed.users import ADMIN_EMAIL
 
     with Session(db_engine) as session:
         reset(session)
+        # M8: the import API is admin-gated — keep the non-rep logins available
+        # (rep logins need core.sales_rep rows, which an empty import DB lacks).
+        session.execute(
+            insert(AppUser),
+            [user for user in seed_data.app_users if user["sales_rep_id"] is None],
+        )
         session.commit()
 
+    from tests.conftest import login
     from valeri_api.main import app
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, ADMIN_EMAIL)
         files = {
             name: (f"{name}.csv", (export_dir / f"{name}.csv").read_bytes(), "text/csv")
             for name in ("kupci", "artikli", "fakture", "stavke")

@@ -12,6 +12,7 @@ from valeri_api.seed.planted import (
     select_planted_customers,
 )
 from valeri_api.seed.types import SeedData
+from valeri_api.seed.users import generate_users
 
 
 def generate(config: SeedConfig) -> SeedData:
@@ -40,7 +41,10 @@ def generate(config: SeedConfig) -> SeedData:
     # 4. Invoices.
     invoices, invoice_lines = generate_invoices(rng, config, customers, baskets, plan)
 
-    # 5. Ground-truth manifest (measured from the generated data).
+    # 5. Application logins (M8): owner/admin/finance + one per rep.
+    app_users = generate_users(sales_reps)
+
+    # 6. Ground-truth manifest (measured from the generated data).
     manifest = build_manifest(config, plan, customers, invoices, invoice_lines)
 
     return SeedData(
@@ -55,4 +59,5 @@ def generate(config: SeedConfig) -> SeedData:
         invoices=invoices,
         invoice_lines=invoice_lines,
         manifest=manifest,
+        app_users=app_users,
     )

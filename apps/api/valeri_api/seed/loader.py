@@ -1,8 +1,9 @@
-"""Bulk-load generated seed data into core.* (and reset for re-seeding)."""
+"""Bulk-load generated seed data into core.*/app.app_user (and reset for re-seeding)."""
 
 from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
+from valeri_api.auth.models import AppUser
 from valeri_api.domain.models import (
     Article,
     ArticleAlias,
@@ -29,38 +30,40 @@ _INSERT_ORDER = [
     (ArticleAlias, "article_aliases"),
     (Invoice, "invoices"),
     (InvoiceLine, "invoice_lines"),
+    (AppUser, "app_users"),
 ]
 
 # Tables whose identity sequence must be advanced past the explicit seed IDs.
 _SEQUENCE_TABLES = [
-    "legal_entity",
-    "sales_rep",
-    "category",
-    "customer",
-    "article",
-    "contact",
-    "invoice",
-    "invoice_line",
+    "core.legal_entity",
+    "core.sales_rep",
+    "core.category",
+    "core.customer",
+    "core.article",
+    "core.contact",
+    "core.invoice",
+    "core.invoice_line",
+    "app.app_user",
 ]
 
 _ALL_TABLES = [
-    "invoice_line",
-    "invoice",
-    "article_alias",
-    "article",
-    "category",
-    "customer_rep",
-    "sales_rep",
-    "contact",
-    "customer",
-    "legal_entity",
+    "app.app_user",
+    "core.invoice_line",
+    "core.invoice",
+    "core.article_alias",
+    "core.article",
+    "core.category",
+    "core.customer_rep",
+    "core.sales_rep",
+    "core.contact",
+    "core.customer",
+    "core.legal_entity",
 ]
 
 
 def reset(session: Session) -> None:
-    """Truncate all core.* tables (dev/test convenience for idempotent re-seeding)."""
-    tables = ", ".join(f"core.{table}" for table in _ALL_TABLES)
-    session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    """Truncate all seeded tables (dev/test convenience for idempotent re-seeding)."""
+    session.execute(text(f"TRUNCATE {', '.join(_ALL_TABLES)} RESTART IDENTITY CASCADE"))
 
 
 def load(data: SeedData, session: Session) -> None:
@@ -73,7 +76,7 @@ def load(data: SeedData, session: Session) -> None:
     for table in _SEQUENCE_TABLES:
         session.execute(
             text(
-                f"SELECT setval(pg_get_serial_sequence('core.{table}', 'id'), "
-                f"(SELECT COALESCE(MAX(id), 1) FROM core.{table}))"  # noqa: S608
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"(SELECT COALESCE(MAX(id), 1) FROM {table}))"  # noqa: S608
             )
         )

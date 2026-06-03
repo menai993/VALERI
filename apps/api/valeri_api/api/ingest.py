@@ -5,7 +5,7 @@ POST /api/ingest/import   — multipart upload (kupci/artikli/fakture/stavke)
                             directory with the export files.
 GET  /api/ingest/report/{import_id}
 
-RBAC lands in M8; until then these endpoints are open like /api/health.
+RBAC (M8): admin only — importing data is an administrative operation.
 """
 
 import tempfile
@@ -15,12 +15,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from valeri_api.auth.deps import require_roles
 from valeri_api.db import get_session
 from valeri_api.ingest.models import ImportRun
 from valeri_api.ingest.pipeline import files_from_directory, run_import
 from valeri_api.ingest.schemas import ImportReport, ImportResult
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_roles("admin"))])
 
 
 @router.post("/ingest/import", status_code=201, response_model=ImportResult)

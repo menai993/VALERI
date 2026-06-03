@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # ── PII masking (M6) — pseudonym salt; load-bearing, keep secret ─────────
     pii_salt: str = "dev-only-salt-change-me"
 
+    # ── Auth (M8) — JWT in an httpOnly cookie; secret from env in production ──
+    auth_secret: str = "dev-only-auth-secret-change-me-immediately"  # >= 32 bytes for HS256
+    auth_token_hours: int = 12
+
 
 @lru_cache
 def get_settings() -> Settings:

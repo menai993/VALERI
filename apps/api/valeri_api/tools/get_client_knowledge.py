@@ -102,6 +102,11 @@ def _run(tool_input: GetClientKnowledgeInput, context: ToolContext) -> GetClient
         {"id": cid},
     ).mappings()
 
+    # RBAC fail-closed: a rep only sees edges whose other endpoint is also in scope
+    # (don't disclose a related customer outside the rep's book).
+    scope = context.visible_customers()
+    rels = [r for r in rels if scope is None or r["other_id"] in scope]
+
     return GetClientKnowledgeOutput(
         customer_id=cid,
         customer_name=name,

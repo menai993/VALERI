@@ -182,6 +182,17 @@ def test_approval_lifecycle(approval_db) -> None:
         assert decided.decided_by == 42
         assert decided.decided_at is not None
 
+        # M10: the human gate writes an append-only 'approval' decision.
+        approval_decision = session.execute(
+            text(
+                "SELECT actor, payload FROM app.decision "
+                "WHERE kind = 'approval' ORDER BY id DESC LIMIT 1"
+            )
+        ).one()
+        assert approval_decision.actor == "user"
+        assert approval_decision.payload["approval_id"] == approval.id
+        assert approval_decision.payload["decided_by"] == 42
+
         sent = send_customer_message(session, approval.id)
         assert sent.status == "sent"
 
@@ -195,6 +206,15 @@ def test_approval_lifecycle(approval_db) -> None:
         assert rejected.decided_at is not None
         with pytest.raises(InvalidTransition):
             decide(session, rejected.id, "approved", decided_by=42)
+
+        # M10: rejection also lands in the decision log.
+        rejection_decision = session.execute(
+            text(
+                "SELECT payload FROM app.decision "
+                "WHERE kind = 'rejection' ORDER BY id DESC LIMIT 1"
+            )
+        ).one()
+        assert rejection_decision.payload["approval_id"] == rejected.id
 
         # Invalid transitions raise.
         fresh = create_draft(

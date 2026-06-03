@@ -5,8 +5,9 @@ approval. The ONLY send path is send_customer_message(), and it raises
 ApprovalRequired unless the approval row is 'approved'. Internal actions
 (scans, tasks, reports, and the drafts themselves) never require approval.
 
-Decisions are recorded on the approval row (decided_by/decided_at/status);
-the append-only app.decision log arrives in M10.
+Decisions are recorded on the approval row (decided_by/decided_at/status) AND
+in the append-only app.decision log (kind 'approval'/'rejection', M10) — "show
+the decision on the platform".
 """
 
 import datetime
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from valeri_api.approvals.models import Approval
 from valeri_api.approvals.schemas import DraftMessage
+from valeri_api.audit.decision import log_decision
 from valeri_api.audit.serialization import jsonable
 from valeri_api.config import get_settings
 from valeri_api.llm.client import LLMClient
@@ -98,6 +100,27 @@ def decide(
     approval.decided_at = datetime.datetime.now(datetime.UTC)
     if note:
         approval.payload = {**(approval.payload or {}), "decision_note": note}
+
+    # M10: the human gate is also an append-only app.decision. It is marked
+    # irreversible by design — it IS the explicit human confirmation (principle 10);
+    # there is no un-approve transition.
+    log_decision(
+        session,
+        kind="approval" if decision == "approved" else "rejection",
+        actor="user",
+        summary=(
+            f"Odobrenje #{approval_id} ({approval.kind}): "
+            + ("odobreno" if decision == "approved" else "odbijeno")
+        ),
+        payload={
+            "approval_id": approval_id,
+            "task_id": approval.task_id,
+            "kind": approval.kind,
+            "decided_by": decided_by,
+            "note": note,
+        },
+        reversible=False,
+    )
     session.flush()
     return approval
 

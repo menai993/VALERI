@@ -12,6 +12,7 @@ import { ConfidenceLabel } from "@/components/widgets/ConfidenceLabel"
 import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
 import { KnowledgePanel } from "@/components/widgets/KnowledgePanel"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
+import { RelationshipMap } from "@/components/widgets/RelationshipMap"
 import { RiskBadge } from "@/components/widgets/RiskBadge"
 import { useCustomer } from "@/lib/api/queries"
 import type { ConfBand, Register } from "@/lib/api/types"
@@ -131,8 +132,14 @@ export function CustomerDetailPage() {
         </Card>
       </div>
 
-      {/* Šta VALERI zna — the conversational knowledge base (CI1) */}
-      {customerId !== null && <KnowledgePanel customerId={customerId} />}
+      {/* Šta VALERI zna — the conversational knowledge base (CI1) + the
+          relationship map over confirmed links (CI2). */}
+      {customerId !== null && (
+        <>
+          <KnowledgePanel customerId={customerId} />
+          <RelationshipMap customerId={customerId} />
+        </>
+      )}
 
       {/* Signals + tasks for this customer — AI surfaces: every row carries
           register + confidence + evidence (principles 2/3/9). */}

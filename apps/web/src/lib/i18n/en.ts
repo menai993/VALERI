@@ -52,6 +52,7 @@ export const en: StringCatalog = {
     pending_events: "Events pending",
     pending_relationships: "Suggested links",
     clarifications: "Clarification questions",
+    map_title: "Relationship map",
     source: {
       data: "data",
       inferred: "inferred",

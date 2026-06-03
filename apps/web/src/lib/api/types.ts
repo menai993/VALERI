@@ -569,6 +569,28 @@ export interface KbKnowledge {
   relationships: KbRelationship[]
 }
 
+/** CI2 relationship map (GET /kb/graph) — confirmed nodes + edges only. */
+export interface GraphNode {
+  customer_id: number
+  name: string | null
+  segment: string | null
+  risk_band: ConfBand | null
+}
+
+export interface GraphEdge {
+  from: number
+  to: number
+  rel_type: string
+  source: FactSource
+  confidence: string
+  evidence_message_id: number | null
+}
+
+export interface KbGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
 // ── investigations (M13) ──────────────────────────────────────────────────────
 
 export type InvestigationStatus = "queued" | "running" | "needs_input" | "done" | "failed"

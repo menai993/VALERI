@@ -50,6 +50,7 @@ export const bs = {
     pending_events: "Događaji na čekanju",
     pending_relationships: "Predložene veze",
     clarifications: "Pitanja za pojašnjenje",
+    map_title: "Mapa veza",
     source: {
       data: "podatak",
       inferred: "zaključeno",

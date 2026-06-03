@@ -12,6 +12,7 @@ import type {
   ActivityRead,
   Approval,
   KbClarification,
+  KbGraph,
   KbItemType,
   KbKnowledge,
   KbPendingQueue,
@@ -429,6 +430,16 @@ export function useCustomerKnowledge(customerId: number | null) {
   return useQuery<KbKnowledge>({
     queryKey: ["kb", "knowledge", customerId],
     queryFn: () => api.get<KbKnowledge>(`/api/customers/${customerId}/knowledge`),
+    enabled: customerId !== null,
+    retry: false,
+  })
+}
+
+/** The relationship map around a customer (CI2): confirmed nodes + edges. */
+export function useKbGraph(customerId: number | null, depth = 1) {
+  return useQuery<KbGraph>({
+    queryKey: ["kb", "graph", customerId, depth],
+    queryFn: () => api.get<KbGraph>("/api/kb/graph", { customer_id: customerId ?? 0, depth }),
     enabled: customerId !== null,
     retry: false,
   })

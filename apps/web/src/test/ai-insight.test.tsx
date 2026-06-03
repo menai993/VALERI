@@ -1,5 +1,6 @@
 /** M8 test 12: AIInsightItem shows the full envelope; dismiss opens the RuleCard
- * preview (apply disabled until M10, D3). */
+ * (functional since M10 — the full flow is covered in rule-card.test.tsx). */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -29,6 +30,18 @@ function withI18n(ui: React.ReactElement) {
   return render(<I18nProvider>{ui}</I18nProvider>)
 }
 
+/** RuleCard uses TanStack mutations since M10 → needs a QueryClientProvider. */
+function withProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider>{ui}</I18nProvider>
+    </QueryClientProvider>,
+  )
+}
+
 beforeEach(() => {
   useLanguageStore.setState({ language: "bs" })
 })
@@ -54,9 +67,9 @@ describe("AIInsightItem", () => {
   })
 })
 
-describe("RuleCard (M8 preview, D3)", () => {
-  it("opens with the insight scope and a DISABLED apply button + M10 note", () => {
-    withI18n(<RuleCard insight={insight} open onClose={() => {}} />)
+describe("RuleCard (M10, functional)", () => {
+  it("opens with the insight scope and a reason input; submit waits for a reason", () => {
+    withProviders(<RuleCard insight={insight} open onClose={() => {}} />)
 
     expect(screen.getByTestId("rule-card")).toBeInTheDocument()
     expect(screen.getByText("Zanemari ovaj uvid")).toBeInTheDocument()
@@ -65,13 +78,13 @@ describe("RuleCard (M8 preview, D3)", () => {
     expect(screen.getByText("Pad prometa")).toBeInTheDocument()
     expect(screen.getByText("Hotel Stari Grad — Objekat 1")).toBeInTheDocument()
 
-    // The apply call lands in M10 — the button must be disabled with the note.
-    expect(screen.getByTestId("apply-rule-button")).toBeDisabled()
-    expect(screen.getByTestId("m10-note")).toBeInTheDocument()
+    // The dismissal is functional (M10) but needs a reason before it can run.
+    expect(screen.getByLabelText(/Razlog/)).toBeInTheDocument()
+    expect(screen.getByTestId("submit-dismiss-button")).toBeDisabled()
   })
 
   it("renders nothing when no insight is selected", () => {
-    withI18n(<RuleCard insight={null} open onClose={() => {}} />)
+    withProviders(<RuleCard insight={null} open onClose={() => {}} />)
     expect(screen.queryByTestId("rule-card")).not.toBeInTheDocument()
   })
 })

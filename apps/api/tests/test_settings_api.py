@@ -9,7 +9,8 @@ from valeri_api.seed.users import ADMIN_EMAIL
 
 @pytest.mark.anyio
 async def test_rule_config_read_and_update(seeded_db: Engine) -> None:
-    """GET lists thresholds; PATCH (admin) updates a value and records updated_by."""
+    """GET lists thresholds; PATCH (admin) updates a value, records updated_by AND
+    writes a reversible threshold_change decision (the M10 decision-audit contract)."""
     client = make_client()
     try:
         await login(client, ADMIN_EMAIL)
@@ -29,6 +30,10 @@ async def test_rule_config_read_and_update(seeded_db: Engine) -> None:
             if item["rule"] == "customer_decline" and item["param"] == "task_due_days"
         )
         original_value = target["value"]
+        with seeded_db.connect() as conn:
+            decisions_before = conn.execute(
+                text("SELECT COUNT(*) FROM app.decision WHERE kind = 'threshold_change'")
+            ).scalar()
         patched = await client.patch(
             "/api/settings/rule-config",
             json={"changes": [{"rule": "customer_decline", "param": "task_due_days", "value": 5}]},
@@ -44,6 +49,24 @@ async def test_rule_config_read_and_update(seeded_db: Engine) -> None:
             ).one()
         assert row.value == 5
         assert row.updated_by is not None
+
+        # The change wrote exactly one reversible threshold_change decision
+        # carrying the old value (no silent self-modification).
+        with seeded_db.connect() as conn:
+            decisions = conn.execute(
+                text(
+                    "SELECT actor, reversible, payload FROM app.decision "
+                    "WHERE kind = 'threshold_change' ORDER BY id DESC"
+                )
+            ).all()
+        assert len(decisions) == decisions_before + 1
+        latest = decisions[0]
+        assert latest.actor == "user"
+        assert latest.reversible is True
+        assert latest.payload["rule"] == "customer_decline"
+        assert latest.payload["param"] == "task_due_days"
+        assert latest.payload["old_value"] == original_value
+        assert latest.payload["new_value"] == 5
 
         # Unknown threshold → 404; restore the original value.
         unknown = await client.patch(

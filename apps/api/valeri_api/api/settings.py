@@ -1,8 +1,9 @@
 """Settings API (M8): rule-config thresholds + user management — per docs/api-spec.md.
 
-rule-config: owner+admin read, admin writes (every change records updated_by).
-users: admin only. Threshold changes are how detection behaviour is tuned —
-they live in the DB, never in code (CLAUDE.md).
+rule-config: owner+admin read, admin writes. Threshold changes are how detection
+behaviour is tuned — they live in the DB, never in code (CLAUDE.md), and every
+change writes an append-only reversible app.decision (M10).
+users: admin only.
 """
 
 from typing import Annotated, Any
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from valeri_api.audit.decision import log_decision
 from valeri_api.auth.deps import require_roles
 from valeri_api.auth.models import AppUser
 from valeri_api.auth.passwords import hash_password
@@ -69,11 +71,28 @@ def patch_rule_config(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[AppUser, Depends(require_roles("admin"))],
 ) -> RuleConfigResponse:
-    """Update thresholds; every change records who made it (updated_by)."""
+    """Update thresholds; every change records updated_by AND writes a reversible
+    app.decision carrying the old value (the M10 decision-audit contract)."""
     import json
 
     for change in body.changes:
-        result = session.execute(
+        # Capture the previous value first — it makes the decision reversible
+        # and doubles as the existence check.
+        old_value = session.execute(
+            text("SELECT value FROM app.rule_config WHERE rule = :rule AND param = :param"),
+            {"rule": change.rule, "param": change.param},
+        ).scalar()
+        if old_value is None:
+            session.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "not_found",
+                    "message": f"Unknown threshold {change.rule}.{change.param}",
+                },
+            )
+
+        session.execute(
             text(
                 "UPDATE app.rule_config "
                 "SET value = CAST(:value AS jsonb), updated_by = :user_id, updated_at = now() "
@@ -86,15 +105,24 @@ def patch_rule_config(
                 "param": change.param,
             },
         )
-        if result.rowcount == 0:
-            session.rollback()
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "code": "not_found",
-                    "message": f"Unknown threshold {change.rule}.{change.param}",
-                },
-            )
+        log_decision(
+            session,
+            kind="threshold_change",
+            actor="user",
+            summary=(
+                f"Prag {change.rule}.{change.param} promijenjen "
+                f"sa {old_value} na {change.value}"
+            ),
+            payload={
+                "rule": change.rule,
+                "param": change.param,
+                "old_value": old_value,
+                "new_value": change.value,
+                "changed_by": user.id,
+                "source": "settings",
+            },
+            reversible=True,
+        )
     session.commit()
     return get_rule_config(session, user)
 

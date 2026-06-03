@@ -6,10 +6,13 @@ import os
 import pytest
 
 from valeri_api.llm.masking import (
+    REDACTED_TOKEN,
     MaskingContext,
     build_masked_payload,
     collect_allowed_numbers,
+    mask_text,
     pseudonym,
+    redact_unresolved_names,
     rehydrate,
 )
 from valeri_api.llm.prompts import SYSTEM_PROMPT, narration_prompt
@@ -71,6 +74,51 @@ def test_rehydrate_restores_names() -> None:
     restored = rehydrate(narration, context)
     assert alias not in restored
     assert restored.count("Hotel Stari Grad — restoran") == 2
+
+
+# ── unresolved-name redaction (M10 hardening, principle 6) ────────────────────
+
+
+def test_unresolved_names_are_redacted() -> None:
+    """A name-like span that did NOT resolve never reaches a prompt in plaintext."""
+    # Mid-sentence capitalised single word = unresolved name.
+    assert "Fupupu" not in redact_unresolved_names("kupac Fupupu kasni s plaćanjem")
+    # Multi-word capitalised run = unresolved name, even at sentence start.
+    redacted = redact_unresolved_names("Hotel Hilltop ne treba signal.")
+    assert "Hilltop" not in redacted and "Hotel" not in redacted
+    assert REDACTED_TOKEN in redacted
+    # Trailing punctuation survives so the sentence still reads.
+    assert redact_unresolved_names("Ne prijavljuj za Hotel Hilltop.").endswith(".")
+
+
+def test_ordinary_sentences_pass_through_redaction() -> None:
+    """Sentence capitalisation, acronyms and pseudonyms are never redacted."""
+    assert (
+        redact_unresolved_names("Kafići su sezonski, nemoj ih prijavljivati.")
+        == "Kafići su sezonski, nemoj ih prijavljivati."
+    )
+    assert redact_unresolved_names("To je sezonski kupac, ne treba signal.").startswith("To je")
+    # Allow-listed tokens (currency/product) survive mid-sentence.
+    assert "KM" in redact_unresolved_names("promet od 5000 KM mjesečno")
+    assert "VALERI" in redact_unresolved_names("zašto je VALERI ovo prijavio")
+    # A new sentence after a name does not get swallowed by the run.
+    redacted = redact_unresolved_names("Zanemari Fupupu. Kasni s plaćanjem.")
+    assert "Kasni s plaćanjem." in redacted and "Fupupu" not in redacted
+
+
+def test_mask_text_masks_resolved_and_redacts_unresolved() -> None:
+    """mask_text: resolved names → pseudonyms; unresolved name-like spans → redacted."""
+    context = MaskingContext()
+    masked = mask_text(
+        "Uporedi Hotel Stari Grad i Hotel Hilltop po prometu.",
+        [("Hotel Stari Grad", 7, "Hotel Stari Grad")],
+        context,
+    )
+    alias = pseudonym(7)
+    assert alias in masked  # resolved → pseudonym (never redacted)
+    assert "Stari Grad" not in masked
+    assert "Hilltop" not in masked  # unresolved → redacted
+    assert REDACTED_TOKEN in masked
 
 
 # ── numbers ──────────────────────────────────────────────────────────────────

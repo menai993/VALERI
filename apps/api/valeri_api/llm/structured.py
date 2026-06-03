@@ -33,7 +33,7 @@ def narrate_structured[T: BaseModel](
     instruction: str,
     client: LLMClient | None = None,
     register: str | None = None,
-    text_field: str = "text",
+    text_field: str | None = "text",
 ) -> tuple[T, str, int]:
     """Produce a validated structured output for an already-masked payload.
 
@@ -41,8 +41,10 @@ def narrate_structured[T: BaseModel](
     gateway is unavailable or output cannot be validated within the retry budget
     — never returns unvalidated output.
 
-    The number contract (principle 1) is checked on `text_field`. `register` is
-    written to ai_log when the schema itself carries no register field.
+    The number contract (principle 1) is checked on `text_field`; pass None for
+    outputs with no narrative text (e.g. intent classification — it produces no
+    user-facing numbers). `register` is written to ai_log when the schema itself
+    carries no register field.
     """
     settings = get_settings()
     llm_client = client if client is not None else get_llm_client()
@@ -86,7 +88,11 @@ def narrate_structured[T: BaseModel](
             continue
 
         # ── the number contract (principle 1) ────────────────────────────────
-        violations = check_number_contract(getattr(parsed, text_field), allowed_numbers)
+        violations = (
+            check_number_contract(getattr(parsed, text_field), allowed_numbers)
+            if text_field is not None
+            else []
+        )
         if violations:
             errors = [
                 "Korišteni su brojevi koji NISU u datim podacima: "

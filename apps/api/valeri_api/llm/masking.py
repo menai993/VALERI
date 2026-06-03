@@ -30,11 +30,17 @@ class MaskingContext(BaseModel):
     """Pseudonym ↔ real-name mapping for one narration (used only for rehydration)."""
 
     pseudonyms: dict[str, str] = {}  # pseudonym -> real name
+    customer_ids: dict[str, int] = {}  # pseudonym -> customer id (server-side ref resolution)
 
     def register_customer(self, customer_id: int, real_name: str) -> str:
         alias = pseudonym(customer_id)
         self.pseudonyms[alias] = real_name
+        self.customer_ids[alias] = customer_id
         return alias
+
+    def customer_id_for(self, alias: str) -> int | None:
+        """Map a pseudonym the model referenced back to the real customer id."""
+        return self.customer_ids.get(alias)
 
 
 def build_masked_payload(
@@ -84,6 +90,123 @@ def rehydrate(text: str, context: MaskingContext) -> str:
         if real_name:
             result = result.replace(alias, real_name)
     return result
+
+
+# ── chat masking (M9): free text + tool outputs ──────────────────────────────
+
+
+def mask_text(text: str, resolved: list[tuple[str, int, str]], context: MaskingContext) -> str:
+    """Replace resolved entity mentions in free text with pseudonyms.
+
+    `resolved` is [(matched_text, customer_id, real_name)] from server-side entity
+    resolution (conversation/resolution.py) — the model never resolves entities.
+
+    Anything name-like that did NOT resolve is redacted (M10 hardening): masking
+    can only pseudonymise identities it recognises, and an unrecognised name must
+    not reach a prompt either — better to lose a word than leak an identity.
+    """
+    masked = text
+    for matched_text, customer_id, real_name in resolved:
+        alias = context.register_customer(customer_id, real_name)
+        masked = masked.replace(matched_text, alias)
+    return redact_unresolved_names(masked)
+
+
+# ── unresolved-name redaction (principle 6, M10 hardening) ────────────────────
+
+# What an unresolved name becomes in a prompt. The model can still propose a
+# rule/answer; anything entity-scoped then fails server-side resolution and asks
+# the user for the exact name (never guesses).
+REDACTED_TOKEN = "[nepoznato-ime]"
+
+# Capitalised tokens that are never identities (product, currency, acronyms).
+_REDACTION_ALLOWLIST = frozenset({"VALERI", "KM", "AI", "PDV", "SQL", "ERP", "OK"})
+
+_PSEUDONYM_RE = re.compile(r"Kupac-[0-9a-f]{6}")
+_TOKEN_RE = re.compile(r"\S+")
+# Bosnian-aware "starts with a capital letter" (optionally after quotes/brackets).
+_CAPITAL_RE = re.compile(r"^[\"'(«]*[A-ZČĆŽŠĐ]")
+_SENTENCE_END_RE = re.compile(r"[.!?:;\n]")
+_STRIP_CHARS = "\"'«»().,!?:;"
+
+
+def redact_unresolved_names(text: str) -> str:
+    """Redact capitalised, name-like spans that survived entity resolution.
+
+    Heuristic: a run of 2+ capitalised words, or a single capitalised word that
+    is NOT at a sentence start, is treated as an unresolved name. Pseudonyms and
+    allow-listed acronyms are never touched; ordinary sentence capitalisation
+    ("Kafići su sezonski") passes through.
+    """
+    tokens = list(_TOKEN_RE.finditer(text))
+
+    # Per token: is it name-like-capitalised, and does it start a sentence?
+    name_like: list[bool] = []
+    sentence_start: list[bool] = []
+    for index, match in enumerate(tokens):
+        word = match.group(0)
+        bare = word.strip(_STRIP_CHARS)
+        name_like.append(
+            bool(_CAPITAL_RE.match(word))
+            and bare not in _REDACTION_ALLOWLIST
+            and not _PSEUDONYM_RE.search(word)
+        )
+        if index == 0:
+            sentence_start.append(True)
+        else:
+            previous = tokens[index - 1]
+            separator = previous.group(0)[-1:] + text[previous.end() : match.start()]
+            sentence_start.append(bool(_SENTENCE_END_RE.search(separator)))
+
+    # Group consecutive name-like tokens into runs (a run never crosses a
+    # sentence boundary) and decide which runs to redact.
+    spans: list[tuple[int, int]] = []
+    index = 0
+    while index < len(tokens):
+        if not name_like[index]:
+            index += 1
+            continue
+        run_end = index
+        while (
+            run_end + 1 < len(tokens) and name_like[run_end + 1] and not sentence_start[run_end + 1]
+        ):
+            run_end += 1
+        run_length = run_end - index + 1
+        if run_length >= 2 or not sentence_start[index]:
+            spans.append((tokens[index].start(), tokens[run_end].end()))
+        index = run_end + 1
+
+    # Replace from the end so character offsets stay valid; keep trailing
+    # punctuation so the sentence still reads.
+    redacted = text
+    for start, end in reversed(spans):
+        span_text = text[start:end]
+        kept_tail = span_text[len(span_text.rstrip(_STRIP_CHARS)) :]
+        redacted = redacted[:start] + REDACTED_TOKEN + kept_tail + redacted[end:]
+    return redacted
+
+
+def mask_customer_fields(payload: Any, context: MaskingContext) -> Any:
+    """Mask customer identity inside tool outputs before they reach a prompt.
+
+    Wherever a dict carries customer_id + customer_name together, the name is
+    replaced by the pseudonym (registered for later rehydration). Contact-style
+    keys are scrubbed defensively.
+    """
+    if isinstance(payload, dict):
+        masked = {}
+        customer_id = payload.get("customer_id")
+        for key, value in payload.items():
+            if key.lower() in _FORBIDDEN_KEYS:
+                continue
+            if key == "customer_name" and customer_id is not None and value:
+                masked[key] = context.register_customer(customer_id, str(value))
+            else:
+                masked[key] = mask_customer_fields(value, context)
+        return masked
+    if isinstance(payload, list):
+        return [mask_customer_fields(item, context) for item in payload]
+    return payload
 
 
 # ── allowed-number collection (for the number contract) ──────────────────────

@@ -139,6 +139,23 @@ def open_signal_keys(session: Session) -> set[tuple[str, int | None, int | None,
     return {(row.rule, row.customer_id, row.article_id, row.category) for row in rows}
 
 
+def suppressed_signal_keys(
+    session: Session,
+) -> dict[tuple[str, int | None, int | None, str | None], int]:
+    """Keys → ids of persisted suppressed signals (M10).
+
+    A re-detected suppressed pattern isn't duplicated; the recurrence is recorded
+    as another suppression_hit on the existing suppressed signal.
+    """
+    rows = session.execute(
+        text(
+            "SELECT id, rule, customer_id, article_id, evidence->>'category_id' AS category "
+            "FROM app.signal WHERE status = 'suppressed'"
+        )
+    ).all()
+    return {(row.rule, row.customer_id, row.article_id, row.category): row.id for row in rows}
+
+
 class InsertOutcome(BaseModel):
     """What happened to one rule's drafts during a scan."""
 
@@ -153,11 +170,19 @@ def insert_signals(
     suppressions: list[dict[str, Any]] | None = None,
     existing_keys: set[tuple[str, int | None, int | None, str | None]] | None = None,
 ) -> InsertOutcome:
-    """Write drafts to app.signal, applying suppression + dedup. Returns counters."""
+    """Write drafts to app.signal, applying suppression + dedup. Returns counters.
+
+    M10: suppressed drafts are PERSISTED (status='suppressed', evidence kept) and
+    every suppression writes an app.suppression_hit row — the raw material for the
+    over-suppression auditor. Repeat detections of an already-suppressed pattern
+    add hits to the existing suppressed signal instead of duplicating it.
+    """
     from valeri_api.audit.serialization import jsonable
+    from valeri_api.rules.models import Signal, SuppressionHit
 
     suppressions = suppressions if suppressions is not None else load_active_suppressions(session)
     existing_keys = existing_keys if existing_keys is not None else open_signal_keys(session)
+    suppressed_keys = suppressed_signal_keys(session)
 
     outcome = InsertOutcome()
     rows: list[dict[str, Any]] = []
@@ -166,8 +191,34 @@ def insert_signals(
         if draft.dedup_key() in existing_keys:
             outcome.deduplicated += 1
             continue
-        if find_suppression(draft, suppressions) is not None:
+
+        suppressing_rule_id = find_suppression(draft, suppressions)
+        if suppressing_rule_id is not None:
             outcome.suppressed += 1
+            existing_suppressed_id = suppressed_keys.get(draft.dedup_key())
+            if existing_suppressed_id is None:
+                # Persist the suppressed signal (evidence preserved, no task ever).
+                suppressed_signal = Signal(
+                    rule=draft.rule,
+                    customer_id=draft.customer_id,
+                    article_id=draft.article_id,
+                    evidence=jsonable(draft.evidence),
+                    confidence=draft.confidence,
+                    conf_band=conf_band(session, draft.confidence),
+                    register=draft.register,
+                    status="suppressed",
+                )
+                session.add(suppressed_signal)
+                session.flush()
+                existing_suppressed_id = suppressed_signal.id
+                suppressed_keys[draft.dedup_key()] = existing_suppressed_id
+
+            # APPEND-ONLY: one hit per suppression event (incl. recurrences).
+            session.add(
+                SuppressionHit(
+                    learned_rule_id=suppressing_rule_id, signal_id=existing_suppressed_id
+                )
+            )
             continue
 
         rows.append(
@@ -186,9 +237,7 @@ def insert_signals(
         outcome.inserted += 1
 
     if rows:
-        from valeri_api.rules.models import Signal
-
         session.execute(insert(Signal), rows)
-        session.flush()
+    session.flush()
 
     return outcome

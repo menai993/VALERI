@@ -6,13 +6,15 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 import valeri_api.approvals.models  # noqa: F401  (registers app.approval)
-import valeri_api.audit.models  # noqa: F401  (registers audit.* models)
+import valeri_api.audit.models  # noqa: F401  (registers audit.* + app.decision models)
 import valeri_api.auth.models  # noqa: F401  (registers app.app_user)
+import valeri_api.conversation.models  # noqa: F401  (registers app.conversation/message)
 import valeri_api.domain.models  # noqa: F401  (registers core.* models on Base.metadata)
 import valeri_api.ingest.models  # noqa: F401  (registers staging.* models)
 import valeri_api.reports.models  # noqa: F401  (registers app.owner_report)
 import valeri_api.rules.models  # noqa: F401  (registers app.* detection models)
 import valeri_api.signals.models  # noqa: F401  (registers app.task* models)
+import valeri_api.tools.models  # noqa: F401  (registers app.tool_call_log)
 from valeri_api.config import get_settings
 from valeri_api.db import Base
 

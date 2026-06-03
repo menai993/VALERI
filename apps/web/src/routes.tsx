@@ -9,6 +9,7 @@ import { AuthGuard } from "@/app/AuthGuard"
 import { AIReportPage } from "@/features/ai-report/AIReportPage"
 import { ArticlesPage } from "@/features/articles/ArticlesPage"
 import { CustomerDetailPage } from "@/features/customers/CustomerDetailPage"
+import { ChatPage } from "@/features/chat/ChatPage"
 import { CustomersPage } from "@/features/customers/CustomersPage"
 import { DashboardPage } from "@/features/dashboard/DashboardPage"
 import { LoginPage } from "@/features/login/LoginPage"
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
           { path: "/artikli", element: <ArticlesPage /> },
           { path: "/prilike", element: <OpportunitiesPage /> },
           { path: "/ai-report", element: <AIReportPage /> },
+          { path: "/chat", element: <ChatPage /> },
           { path: "/postavke", element: <SettingsPage /> },
         ],
       },

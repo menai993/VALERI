@@ -123,13 +123,34 @@ export const bs = {
   },
   rule_card: {
     title: "Zanemari ovaj uvid",
-    description: "VALERI može naučiti pravilo iz ovog odbacivanja.",
+    description: "VALERI iz razloga odbacivanja uči reverzibilno pravilo.",
     reason_label: "Razlog (npr. 'sezonski kupac')",
     reason_placeholder: "Zašto ovaj uvid nije koristan?",
     scope_title: "Opseg pravila",
+    scope_kinds: {
+      once: "Samo ovaj put",
+      entity: "Ovaj kupac",
+      category: "Cijela kategorija",
+      threshold: "Promjena praga",
+      conditional: "Uslovno",
+    },
+    proposal_title: "Predloženo pravilo",
+    effect_label: "Predviđeni efekat",
+    effect_signals: "signala u zadnjih",
+    effect_days: "dana",
+    interpretation: "pouzdanost tumačenja",
+    status_applied: "Primijenjeno (reverzibilno)",
+    status_pending: "Čeka potvrdu",
+    applied_note:
+      "Pravilo je primijenjeno i zabilježeno kao odluka — možete ga poništiti u bilo kojem trenutku.",
+    pending_note: "Pravilo još nije aktivno — potrebna je vaša potvrda.",
+    undone_note: "Pravilo je poništeno. Signali će se ponovo prijavljivati.",
+    submit: "Zanemari uvid",
     apply: "Primijeni",
+    undo: "Poništi pravilo",
     cancel: "Odustani",
-    m10_note: "Samokonfiguracija (učenje pravila) stiže u M10 — odbacivanje će tada kreirati reverzibilno pravilo.",
+    close: "Zatvori",
+    error: "Pravilo nije moguće kreirati — pokušajte ponovo.",
   },
   tasks: {
     title: "Zadaci",
@@ -233,6 +254,16 @@ export const bs = {
   opportunities: {
     title: "Prilike",
     phase2: "Modul prilika (CRM pipeline) stiže u Fazi 2.",
+  },
+  chat: {
+    title: "Pitaj VALERI",
+    subtitle: "Razgovarajte s poslovnim podacima na bosanskom",
+    new_session: "Novi razgovor",
+    untitled: "Razgovor bez naslova",
+    empty: "Postavite pitanje o prometu, kupcima, artiklima ili signalima.",
+    input_placeholder: "Npr. Koliki je promet u zadnjih 30 dana?",
+    thinking: "VALERI analizira…",
+    task_created: "Zadatak kreiran",
   },
 }
 

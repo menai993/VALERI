@@ -94,3 +94,27 @@ class LearnedRule(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SuppressionHit(Base):
+    """One scanner suppression event (M10). APPEND-ONLY.
+
+    Links the learned rule that suppressed to the persisted suppressed signal
+    (status='suppressed', evidence kept) — the raw material for the M11
+    over-suppression auditor.
+    """
+
+    __tablename__ = "suppression_hit"
+    __table_args__ = (
+        Index("ix_suppression_hit_rule", "learned_rule_id"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    learned_rule_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("app.learned_rule.id"), nullable=False
+    )
+    signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("app.signal.id"))
+    suppressed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

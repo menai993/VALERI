@@ -1,6 +1,6 @@
 # Spec — C-CRM2: Rep activity & forecasting
 
-**Track:** Phase-2 CRM (optional, owner-approved) · **Builds on:** C-CRM1 (opportunities, `app.activity` table), M7 (owner report), M8 (dashboard/RBAC) · **Status:** awaiting owner review
+**Track:** Phase-2 CRM (optional, owner-approved) · **Builds on:** C-CRM1 (opportunities, `app.activity` table), M7 (owner report), M8 (dashboard/RBAC) · **Status:** approved (D1–D7 defaults OK'd by owner, 2026-06-03)
 
 ## 1. Objective
 

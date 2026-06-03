@@ -6,6 +6,8 @@ itself is tested with fakes in test_kb_capture.py — here we assert auth/RBAC a
 the response envelopes.
 """
 
+import json
+
 import pytest
 from sqlalchemy import Engine, text
 
@@ -89,6 +91,45 @@ async def test_knowledge_rbac(seeded_db: Engine, seed_data) -> None:
     finally:
         await rep_client.aclose()
         await owner_client.aclose()
+
+
+@pytest.mark.anyio
+async def test_rep_cannot_link_clarification_out_of_scope(seeded_db: Engine, seed_data) -> None:
+    """A rep answering a clarification cannot link a record onto a foreign customer."""
+    rep_user = next(u for u in seed_data.app_users if u["role"] == "sales_rep")
+    rep_rep_id = rep_user["sales_rep_id"]
+
+    with seeded_db.connect() as conn:
+        foreign = conn.execute(
+            text(
+                "SELECT c.id FROM core.customer c WHERE c.id NOT IN "
+                "(SELECT customer_id FROM core.customer_rep WHERE sales_rep_id = :rid) LIMIT 1"
+            ),
+            {"rid": rep_rep_id},
+        ).scalar()
+        opts = json.dumps([{"label": "link", "action": "link", "customer_id": foreign}])
+        clar_id = conn.execute(
+            text(
+                "INSERT INTO app.clarification (kind, question, options, target_record_ref) "
+                "VALUES ('entity', 'test?', CAST(:opts AS jsonb), 'client_fact:99999') RETURNING id"
+            ),
+            {"opts": opts},
+        ).scalar()
+        conn.commit()
+
+    rep_client = make_client()
+    try:
+        await login(rep_client, rep_user["email"])
+        resp = await rep_client.post(
+            f"/api/kb/clarifications/{clar_id}/answer",
+            json={"option": {"action": "link", "customer_id": foreign}},
+        )
+        assert resp.status_code == 403
+    finally:
+        await rep_client.aclose()
+        with seeded_db.connect() as conn:
+            conn.execute(text("DELETE FROM app.clarification WHERE id = :id"), {"id": clar_id})
+            conn.commit()
 
 
 @pytest.mark.anyio

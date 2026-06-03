@@ -32,20 +32,21 @@ def _add_customer(session: Session, name: str, segment: str = "hotel") -> int:
 
 @pytest.mark.anyio
 async def test_stated_deal_creates_resolved_event(db_session: Session) -> None:
+    """A small, confidently-resolved deal auto-saves (resolved + evidence + confidence)."""
     customer_id = _add_customer(db_session, "Hotel Hills Sarajevo")
     extraction = {
         "facts": [],
         "events": [
             {
                 "kind": "deal",
-                "summary": "Godišnji ugovor",
+                "summary": "Mjesečna nabavka",
                 "mentioned_name": "Hotel Hills Sarajevo",
-                "value": 72000,
+                "value": 4200,  # below kb.high_stakes_value (10000) → may auto-save
                 "categories": ["hemija"],
                 "occurred_on": None,
                 "source": "stated",
                 "confidence": 0.9,
-                "evidence_span": "Zaključio sam godišnji ugovor s Hotel Hills, oko 72.000 KM",
+                "evidence_span": "Dogovorili smo nabavku, oko 4.200 KM",
             }
         ],
         "relationships": [],
@@ -53,7 +54,7 @@ async def test_stated_deal_creates_resolved_event(db_session: Session) -> None:
     }
     response = run_capture(
         db_session,
-        text_in="Zaključio sam godišnji ugovor s Hotel Hills Sarajevo, oko 72.000 KM.",
+        text_in="Dogovorili smo nabavku s Hotel Hills Sarajevo, oko 4.200 KM.",
         user_id=1,
         client=FakeKbLLM(extraction=extraction),
     )
@@ -66,12 +67,59 @@ async def test_stated_deal_creates_resolved_event(db_session: Session) -> None:
         {"cid": customer_id},
     ).one()
     assert row.customer_id == customer_id  # resolved to the right customer
-    assert float(row.value) == 72000.0  # STATED value, stored as data
+    assert float(row.value) == 4200.0  # STATED value, stored as data
     assert row.source == "stated"
-    assert row.status == "active"  # high-confidence, resolved → auto-saved
-    assert "Zaključio sam" in row.evidence_text  # raw message is the evidence
+    assert row.status == "active"  # small + high-confidence + resolved → auto-saved
+    assert "Dogovorili smo" in row.evidence_text  # raw message is the evidence
     assert float(row.confidence) == 0.9
     assert len(response.auto_saved) == 1
+
+
+@pytest.mark.anyio
+async def test_large_deal_goes_to_queue(db_session: Session) -> None:
+    """A stated value ≥ kb.high_stakes_value is confirmed, not auto-saved — the
+    threshold is enforced in code, not left to the model's stakes hint (§8.2)."""
+    customer_id = _add_customer(db_session, "Hotel Evropa Veliki")
+    extraction = {
+        "facts": [],
+        "events": [
+            {
+                "kind": "deal",
+                "summary": "Godišnji ugovor",
+                "mentioned_name": "Hotel Evropa Veliki",
+                "value": 72000,  # ≥ high_stakes_value → high-stakes → confirm
+                "categories": ["hemija"],
+                "occurred_on": None,
+                "source": "stated",
+                "confidence": 0.95,
+                "evidence_span": "Zaključio sam godišnji ugovor, oko 72.000 KM",
+            }
+        ],
+        "relationships": [],
+        "confidence": 0.95,
+    }
+    response = run_capture(
+        db_session,
+        text_in="Zaključio sam godišnji ugovor s Hotel Evropa Veliki, oko 72.000 KM.",
+        user_id=1,
+        client=FakeKbLLM(extraction=extraction),
+    )
+
+    status = db_session.execute(
+        text("SELECT status FROM app.commercial_event WHERE customer_id = :cid AND kind = 'deal'"),
+        {"cid": customer_id},
+    ).scalar_one()
+    assert status == "proposed"  # large stated value → confirmation queue
+    assert response.auto_saved == []
+    # No auto-save decision for a queued large deal.
+    decisions = db_session.execute(
+        text(
+            "SELECT count(*) FROM app.decision d "
+            "WHERE d.kind = 'kb_capture' AND d.payload->>'customer_id' = :cid"
+        ),
+        {"cid": str(customer_id)},
+    ).scalar_one()
+    assert decisions == 0
 
 
 # ── acceptance 2: stated same_owner relationship → confirmation queue ───────────
@@ -193,6 +241,21 @@ async def test_pii_masked_before_model(db_session: Session) -> None:
     assert "Klinika Vita Nova" not in masked
     assert "marko@vita.ba" not in masked  # e-mail stripped
     assert "234 567" not in masked  # phone stripped
+
+
+@pytest.mark.anyio
+async def test_person_name_masked_before_model(db_session: Session) -> None:
+    """A person's name introduced by a role/title is redacted; a business name stays."""
+    _add_customer(db_session, "Hotel Centar Glavni")
+    context = MaskingContext()
+    masked = mask_for_capture(
+        db_session,
+        "Direktor Marko Marković iz Hotel Centar Glavni kaže da kupac Fupupu kasni.",
+        context,
+    )
+    assert "Marko Marković" not in masked  # personal name redacted
+    assert "[osoba]" in masked
+    assert "Fupupu" in masked  # unknown business name kept for resolution (§8.6)
 
 
 @pytest.mark.anyio

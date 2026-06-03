@@ -34,14 +34,34 @@ logger = logging.getLogger("valeri.kb.pipeline")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 _PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d\s\-/().]{6,}\d)(?!\w)")
 _PII_TOKEN = "[kontakt]"
+_PERSON_TOKEN = "[osoba]"
+
+# A person's name introduced by a role/title word — redacted before the model.
+# (A business name like "kupac Fupupu" is preceded by a business word, not these,
+# so it survives for resolution per §8.6.)
+_PERSON_INDICATOR_RE = re.compile(
+    r"(?i)\b("
+    r"direktor(?:ica)?|gospodin|gospođa|gđa|gdin|gosp\.?|vlasni(?:k|ca)|"
+    r"menadžer(?:ica)?|šef(?:ica)?|kontakt(?:\s+osoba)?|kontakt-osoba|"
+    r"osoba|nabavlja(?:č|čica)|šefica nabavke|direktor nabavke"
+    r")\s+([A-ZČĆŽŠĐ][^\s,.;:!?]*(?:\s+[A-ZČĆŽŠĐ][^\s,.;:!?]*){0,2})"
+)
+
+
+def _redact_person_names(text: str) -> str:
+    """Redact a Title-Case name that follows a person indicator (director/contact/…)."""
+    return _PERSON_INDICATOR_RE.sub(lambda m: f"{m.group(1)} {_PERSON_TOKEN}", text)
 
 
 def mask_for_capture(session: Session, raw_text: str, context: MaskingContext) -> str:
-    """Pseudonymise KNOWN customers and strip contact PII; keep unknown names visible.
+    """Pseudonymise KNOWN customers and strip personal PII; keep unknown business names.
 
-    Unlike the chat masker, this does NOT redact unresolved capitalised names — an
-    unknown business name (e.g. 'Fupupu') must survive so it can be captured and
-    resolved (§8.6). Personal contact data (e-mail/phone) is always removed.
+    Unlike the chat masker, this does NOT blanket-redact unresolved capitalised names
+    — an unknown business name (e.g. 'Fupupu') must survive so it can be captured and
+    resolved (§8.6). What IS always removed: e-mail, phone, and a person's name when
+    it follows a role/title indicator (a decision-maker/contact). Bare person names
+    with no indicator are an inherent NER limit (documented; the realistic capture
+    vector — "direktor X", "kontakt Y" — is covered).
     """
     masked = raw_text
     for matched_text, customer_id, real_name in resolve_entities(session, raw_text):
@@ -49,6 +69,7 @@ def mask_for_capture(session: Session, raw_text: str, context: MaskingContext) -
         masked = masked.replace(matched_text, alias)
     masked = _EMAIL_RE.sub(_PII_TOKEN, masked)
     masked = _PHONE_RE.sub(_PII_TOKEN, masked)
+    masked = _redact_person_names(masked)
     return masked
 
 

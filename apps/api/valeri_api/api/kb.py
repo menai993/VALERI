@@ -16,6 +16,7 @@ from valeri_api.auth.deps import CurrentUser, require_roles, visible_customer_id
 from valeri_api.auth.models import AppUser
 from valeri_api.db import get_session
 from valeri_api.kb import service
+from valeri_api.kb.models import Clarification, ClientFact, CommercialEvent
 from valeri_api.kb.pipeline import run_capture
 from valeri_api.kb.schemas import (
     CaptureRequest,
@@ -156,6 +157,7 @@ def answer(
     user: Editor,
 ) -> dict:
     """Answer a clarification (link / new prospect / not-a-match) — writes a decision."""
+    _guard_clarification_scope(user, session, clarification_id, body)
     try:
         decision = service.answer_clarification(
             session, clarification_id=clarification_id, answer=body, user_id=user.id
@@ -191,4 +193,37 @@ def _guard_item_scope(user: AppUser, session: Session, item_type: str, item_id: 
         raise HTTPException(
             status_code=403,
             detail={"code": "forbidden", "message": "Zapis je izvan vašeg opsega"},
+        )
+
+
+def _guard_clarification_scope(
+    user: AppUser, session: Session, clarification_id: int, body: ClarificationAnswer
+) -> None:
+    """A rep may only answer clarifications for their own records, and only link to
+    a customer in their scope (so a rep can't re-link a record onto a foreign customer)."""
+    scope = visible_customer_ids(user, session)
+    if scope is None:
+        return
+    clarification = session.get(Clarification, clarification_id)
+    if clarification is None:
+        return  # the handler will 404
+
+    # The target record must be in scope (unresolved records have no owner yet).
+    ref_type, _, ref_id = clarification.target_record_ref.partition(":")
+    if ref_type in ("client_fact", "commercial_event") and ref_id.isdigit():
+        model = ClientFact if ref_type == "client_fact" else CommercialEvent
+        record = session.get(model, int(ref_id))
+        owner = getattr(record, "customer_id", None) if record is not None else None
+        if owner is not None and owner not in scope:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "forbidden", "message": "Razjašnjenje je izvan vašeg opsega"},
+            )
+
+    # A chosen link target must be a customer the rep can see.
+    chosen = body.option.get("customer_id")
+    if chosen is not None and int(chosen) not in scope:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "forbidden", "message": "Kupac je izvan vašeg opsega"},
         )

@@ -41,9 +41,29 @@ logger = logging.getLogger("valeri.kb.apply")
 # Events that are negative/consequential and must be confirmed (not auto-saved).
 _HIGH_STAKES_EVENTS = ("complaint",)
 
+# Where a fact's value might carry a monetary amount (so the high_stakes_value
+# threshold is enforced for money facts, not just payment-prefixed ones).
+_AMOUNT_KEYS = ("amount", "value", "iznos", "vrijednost")
+
 
 def _autosave_confidence(session: Session) -> float:
     return float(load_rule_config(session, "kb")["fact_autosave_confidence"])
+
+
+def _value_amount(value: dict | None) -> float | None:
+    """Pull a numeric amount out of a fact value (None when it carries no money)."""
+    if not isinstance(value, dict):
+        return None
+    for key in _AMOUNT_KEYS:
+        candidate = value.get(key)
+        if isinstance(candidate, int | float) and not isinstance(candidate, bool):
+            return float(candidate)
+        if isinstance(candidate, str):
+            try:
+                return float(candidate.replace(",", "."))
+            except ValueError:
+                continue
+    return None
 
 
 def _disposition(
@@ -96,6 +116,7 @@ def apply_fact(
         session,
         item_type="fact",
         fact_type=extracted.fact_type,
+        value_amount=_value_amount(extracted.value),
         extracted_stakes=extracted.stakes,
     )
 
@@ -174,9 +195,18 @@ def apply_event(
     source_user_id: int | None,
     client: LLMClient | None = None,
 ) -> dict:
-    """Apply one commercial-event candidate by stakes (a deal auto-saves; a complaint confirms)."""
+    """Apply one commercial-event candidate by stakes.
+
+    A small deal auto-saves; a complaint, or a stated value at/above
+    kb.high_stakes_value, goes to the confirmation queue (the threshold is enforced
+    here, not left to the model's own stakes hint).
+    """
     resolved = resolution.decision == "auto"
-    high_stakes = extracted.kind in _HIGH_STAKES_EVENTS
+    value_amount = float(extracted.value) if extracted.value is not None else None
+    high_stakes = (
+        extracted.kind in _HIGH_STAKES_EVENTS
+        or classify_stakes(session, item_type="event", value_amount=value_amount) == "high"
+    )
 
     occurred = extracted.occurred_on or datetime.date.today()
     value = Decimal(str(extracted.value)) if extracted.value is not None else None

@@ -18,10 +18,12 @@ from valeri_api.api.rules import router as rules_router
 from valeri_api.api.settings import router as settings_router
 from valeri_api.api.signals import router as signals_router
 from valeri_api.api.tasks import router as tasks_router
+from valeri_api.logging_config import setup_json_logging
 
 
 def create_app() -> FastAPI:
     """Build the FastAPI application with all routers mounted under /api."""
+    setup_json_logging()  # M14: structured JSON logs from the API process
     application = FastAPI(title="VALERI API", version="0.1.0")
     application.include_router(health_router, prefix="/api")
     application.include_router(auth_router, prefix="/api")

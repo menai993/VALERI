@@ -56,9 +56,9 @@ services:
       context: ../apps/api
       target: dev
     restart: unless-stopped
-    # Placeholder worker (M0). Overrides the api entrypoint so only the api
-    # container runs migrations; `python -c` works with both dev (source) and
-    # dist (compiled) images.
+    # The scheduled-jobs process (M4 scans · M11 audit · M13 investigation poll).
+    # Overrides the api entrypoint so only the api container runs migrations;
+    # `python -c` works with both dev (source) and dist (compiled) images.
     entrypoint: ["python", "-c", "from valeri_api.worker import main; main()"]
     command: []
     environment:
@@ -93,6 +93,41 @@ services:
     volumes:
       - ./litellm.config.yaml:/etc/litellm/config.yaml:ro
 
+  backup:
+    # Scheduled pg_dump (M14). Runs backup.sh once a day at BACKUP_HOUR; dumps land
+    # in the pg_backups volume and are pruned after BACKUP_RETENTION_DAYS. Copy the
+    # dumps off-host regularly — see docs/RUNBOOK.md.
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-02}
+    volumes:
+      - ./backup:/scripts:ro
+      - pg_backups:/backups
+    entrypoint: ["sh", "-c"]
+    # A tiny scheduler: poll the clock; when the hour matches BACKUP_HOUR, dump,
+    # then sleep an hour so it runs once per day.
+    command:
+      - |
+        echo "[backup] service started; daily backup at ${BACKUP_HOUR:-02}:00";
+        while true; do
+          if [ "$$(date +%H)" = "${BACKUP_HOUR:-02}" ]; then
+            sh /scripts/backup.sh || echo "[backup] run failed";
+            sleep 3600;
+          fi;
+          sleep 1800;
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -109,5 +144,6 @@ services:
 
 volumes:
   pgdata:
+  pg_backups:
   caddy_data:
   caddy_config:

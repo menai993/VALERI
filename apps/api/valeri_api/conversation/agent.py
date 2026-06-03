@@ -29,7 +29,7 @@ from valeri_api.llm.router.roles import ROLE_SIMPLE_QA
 from valeri_api.llm.schemas import NarrationFailed
 from valeri_api.llm.structured import narrate_structured
 from valeri_api.rules.engine import load_rule_config
-from valeri_api.semantic.registry import load_registry
+from valeri_api.semantic.registry import available_metrics
 from valeri_api.tools.base import ToolContext
 from valeri_api.tools.catalog import TOOLS, dispatch
 
@@ -96,7 +96,7 @@ def run_chat_agent(
     """Run the bounded act→synthesize loop. Returns (text, register, tool_calls, source)."""
     caps = _caps(session)
     started = time.monotonic()
-    registry = load_registry()
+    known_metrics = available_metrics(session)  # built-in + approved overlay
     results: list[dict[str, Any]] = []  # masked tool results (feed the prompts)
     tool_calls: list[dict[str, Any]] = []  # the record the conversation layer logs/streams
 
@@ -139,7 +139,7 @@ def run_chat_agent(
 
         params = _resolve_refs(choice.params, context)
         # Honesty gate: never dispatch query_metric with an unregistered metric.
-        if choice.tool == "query_metric" and params.get("metric") not in registry:
+        if choice.tool == "query_metric" and params.get("metric") not in known_metrics:
             tool_calls.append({"tool": choice.tool, "ok": False, "error_code": "unknown_metric"})
             continue
 

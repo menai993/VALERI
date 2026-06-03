@@ -38,7 +38,7 @@ def classify_intent(
 
     available_metrics = [
         {"naziv": cap.name, "opis": cap.description, "parametri": cap.params}
-        for cap in list_capabilities(user_role)
+        for cap in list_capabilities(session, user_role)
         if cap.kind == "metric"
     ]
     payload = {

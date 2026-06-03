@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from valeri_api.semantic.query_builder import MetricValidationError, run_metric
-from valeri_api.semantic.registry import load_registry
+from valeri_api.semantic.registry import resolve_metric
 from valeri_api.tools.base import ToolContext, ToolDefinition, ToolError, ToolPermissionError
 
 ALL_ROLES = ("owner", "admin", "finance", "sales_rep")
@@ -41,8 +41,7 @@ class QueryMetricOutput(BaseModel):
 
 
 def _run(tool_input: QueryMetricInput, context: ToolContext) -> QueryMetricOutput:
-    registry = load_registry()
-    definition = registry.get(tool_input.metric)
+    definition = resolve_metric(context.session, tool_input.metric)
     if definition is None:
         raise ToolError(f"Nepoznata metrika: {tool_input.metric!r}")
 

@@ -16,6 +16,7 @@ modules (mirrors the list in ``migrations/env.py``).
 import valeri_api.approvals.models  # noqa: F401
 import valeri_api.audit.models  # noqa: F401
 import valeri_api.auth.models  # noqa: F401
+import valeri_api.capabilities.models  # noqa: F401
 import valeri_api.conversation.models  # noqa: F401
 import valeri_api.crm.models  # noqa: F401
 import valeri_api.domain.models  # noqa: F401

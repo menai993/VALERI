@@ -22,7 +22,9 @@ class DescribeCapabilitiesOutput(BaseModel):
 
 
 def _run(tool_input: DescribeCapabilitiesInput, context: ToolContext) -> DescribeCapabilitiesOutput:
-    return DescribeCapabilitiesOutput(capabilities=list_capabilities(context.user.role))
+    return DescribeCapabilitiesOutput(
+        capabilities=list_capabilities(context.session, context.user.role)
+    )
 
 
 DESCRIBE_CAPABILITIES = ToolDefinition(

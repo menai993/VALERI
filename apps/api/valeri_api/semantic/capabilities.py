@@ -11,8 +11,9 @@ agent.
 from typing import Literal
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from valeri_api.semantic.registry import load_registry
+from valeri_api.semantic.registry import available_metrics
 
 _REP_ROLE = "sales_rep"
 # Surfaced via their metrics / handled elsewhere, not as standalone planner tools.
@@ -29,9 +30,9 @@ class CapabilityDescriptor(BaseModel):
     entity: str | None = None  # metrics only
 
 
-def _metric_descriptors(user_role: str) -> list[CapabilityDescriptor]:
+def _metric_descriptors(session: Session, user_role: str) -> list[CapabilityDescriptor]:
     descriptors: list[CapabilityDescriptor] = []
-    for name, definition in load_registry().items():
+    for name, definition in available_metrics(session).items():
         param_names = {param.name for param in definition.params}
         # A rep can only run metrics that can be scoped to a customer; pure
         # company/segment-wide metrics are finance data (blocked for reps, D2).
@@ -69,6 +70,7 @@ def _tool_descriptors(user_role: str) -> list[CapabilityDescriptor]:
     return descriptors
 
 
-def list_capabilities(user_role: str) -> list[CapabilityDescriptor]:
-    """The full RBAC-filtered capability catalog for a role: metrics + tools."""
-    return _metric_descriptors(user_role) + _tool_descriptors(user_role)
+def list_capabilities(session: Session, user_role: str) -> list[CapabilityDescriptor]:
+    """The full RBAC-filtered capability catalog for a role: metrics (incl. approved
+    overlay) + tools."""
+    return _metric_descriptors(session, user_role) + _tool_descriptors(user_role)

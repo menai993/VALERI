@@ -92,7 +92,9 @@ def handle_message(
     # Honesty gate (CSA): never dispatch query_metric with a metric the registry
     # doesn't have — that is how the router used to force-fit a wrong answer. Treat
     # an unregistered/missing metric as "no capability fits" and answer honestly.
-    if tool_name == "query_metric" and not _is_known_metric(classification.params.get("metric")):
+    if tool_name == "query_metric" and not _is_known_metric(
+        session, classification.params.get("metric")
+    ):
         tool_name = None
 
     # ── 4a. analysis → bounded multi-step agent loop (CSA Phase 2) ───────────────
@@ -199,13 +201,13 @@ def handle_message(
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_known_metric(metric: Any) -> bool:
-    """True iff `metric` is a registered semantic-layer metric (honesty gate)."""
+def _is_known_metric(session: Session, metric: Any) -> bool:
+    """True iff `metric` is a known metric — built-in OR approved overlay (honesty gate)."""
     if not metric:
         return False
-    from valeri_api.semantic.registry import load_registry
+    from valeri_api.semantic.registry import resolve_metric
 
-    return metric in load_registry()
+    return resolve_metric(session, metric) is not None
 
 
 def _masked_history(

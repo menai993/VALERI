@@ -240,7 +240,14 @@ def _apply_clarification_action(
 
 
 def _clarification_records(session: Session, ref_type: str, ref_value: str) -> list:
-    """The proposed, unresolved records a clarification covers."""
+    """The proposed, unresolved records a clarification covers.
+
+    The `customer_id IS NULL` filter is a load-bearing RBAC invariant: a 'mention'
+    clarification only ever re-links OWNERLESS records, so the answer endpoint's
+    destination scope-check (api/kb.py _guard_clarification_scope) is sufficient —
+    a rep can't use it to re-target records that already belong to another customer.
+    Do not relax this filter without also restoring the target-owner scope guard.
+    """
     if ref_type == "mention":
         facts = (
             session.query(ClientFact)

@@ -111,7 +111,7 @@ async def test_rep_cannot_link_clarification_out_of_scope(seeded_db: Engine, see
         clar_id = conn.execute(
             text(
                 "INSERT INTO app.clarification (kind, question, options, target_record_ref) "
-                "VALUES ('entity', 'test?', CAST(:opts AS jsonb), 'client_fact:99999') RETURNING id"
+                "VALUES ('entity', 'test?', CAST(:opts AS jsonb), 'mention:Nepoznati') RETURNING id"
             ),
             {"opts": opts},
         ).scalar()

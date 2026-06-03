@@ -254,9 +254,7 @@ def upgrade() -> None:
     )
 
     # ── trigram index for fuzzy customer-name resolution ──────────────────────
-    op.execute(
-        "CREATE INDEX ix_customer_name_trgm ON core.customer USING gin (name gin_trgm_ops)"
-    )
+    op.execute("CREATE INDEX ix_customer_name_trgm ON core.customer USING gin (name gin_trgm_ops)")
 
     # ── kb.* thresholds → app.rule_config ─────────────────────────────────────
     for param, value in KB_THRESHOLDS.items():

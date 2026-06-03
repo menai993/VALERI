@@ -10,15 +10,19 @@ Narration is generated fully and then streamed (spec D3); the SSE event contract
 """
 
 import logging
+import re
 from typing import Any
 
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
+from valeri_api.auth.deps import visible_customer_ids
 from valeri_api.auth.models import AppUser
-from valeri_api.conversation.answer import HELP_TEXT, narrate_answer
+from valeri_api.conversation.answer import narrate_answer
+from valeri_api.conversation.assistant import narrate_assistant
 from valeri_api.conversation.intent import classify_intent
 from valeri_api.conversation.models import Conversation, Message
-from valeri_api.conversation.resolution import resolve_entities
+from valeri_api.conversation.resolution import normalise, resolve_entities
 from valeri_api.conversation.schemas import SSEEvent
 from valeri_api.llm.client import LLMClient
 from valeri_api.llm.masking import MaskingContext, mask_text
@@ -34,6 +38,20 @@ HISTORY_WINDOW = 6
 _INTENT_DEFAULT_TOOL = {
     "feedback_config": "propose_rule_change",
     "investigation": "start_investigation",
+}
+
+# Tools that are meaningless without a specific customer. If entity resolution
+# couldn't bind one, we ask which customer (listing candidates) instead of
+# dispatching with empty params and surfacing a raw validation error.
+_CUSTOMER_REQUIRED_TOOLS = {"get_client_knowledge", "get_customer_360"}
+
+# Common words that are not distinctive enough to match a customer on (segments,
+# question words). Stored in the normalised (diacritic-free) form used for matching.
+_CANDIDATE_STOPWORDS = {
+    "hotel", "restoran", "kafic", "kafe", "klinika", "skola", "objekat", "objekt",
+    "kupac", "kupca", "kupcu", "kupce", "kupci", "firma", "firme",
+    "sta", "znas", "znate", "znamo", "kako", "koji", "koja", "koje", "ima",
+    "daj", "pokazi", "reci", "mislis", "mozes", "molim", "imamo", "imali",
 }
 
 
@@ -71,19 +89,41 @@ def handle_message(
     # didn't already pick one.
     tool_name = classification.tool or _INTENT_DEFAULT_TOOL.get(classification.intent)
 
-    # ── 4. help / no tool → static guidance, no data access ──────────────────
+    # ── 4. help / no tool → data-aware assistant reply (read-only, no mutation) ──
     if classification.intent == "help" or tool_name is None:
+        text, register, _ = narrate_assistant(session, user, context, client=client)
         return _finish(
             session,
             conversation,
             events,
-            text=HELP_TEXT,
-            register="analiza",
+            text=text,
+            register=register,
             tool_calls=[],
         )
 
     # ── 5. dispatch the tool (RBAC + validation + logging inside) ────────────
     params = _resolve_param_refs(classification.params, context)
+
+    # A customer-scoped tool with no resolvable customer: first carry the customer
+    # in conversational focus (a follow-up like "šta je kupio kupac?" means the one
+    # we were just discussing); only if there's none do we ask which one.
+    if tool_name in _CUSTOMER_REQUIRED_TOOLS and "customer_id" not in params:
+        focus_id = _focus_customer_id(session, conversation, user)
+        if focus_id is not None:
+            params["customer_id"] = focus_id
+        else:
+            return _finish(
+                session,
+                conversation,
+                events,
+                text=_unresolved_customer_reply(session, user, message_text),
+                register="analiza",
+                tool_calls=[
+                    {"tool": tool_name, "params": params, "ok": False,
+                     "error_code": "unresolved_customer"}
+                ],
+            )
+
     tool_context = ToolContext(
         session=session, user=user, message_id=user_message.id, llm_client=client
     )
@@ -144,6 +184,70 @@ def _masked_history(
         resolved = resolve_entities(session, message.content)
         history.append(f"{message.role}: {mask_text(message.content, resolved, context)}")
     return history
+
+
+def _focus_customer_id(session: Session, conversation: Conversation, user: AppUser) -> int | None:
+    """The customer currently in conversational focus: the most recently mentioned one.
+
+    Lets a pronoun/anaphor follow-up ("šta je kupio kupac?") resolve to the customer
+    just discussed instead of re-asking. RBAC-scoped: a rep never inherits a focus
+    customer outside their book.
+    """
+    scope = visible_customer_ids(user, session)
+    rows = (
+        session.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.id.desc())
+        .limit(HISTORY_WINDOW)
+        .all()
+    )
+    for message in rows:
+        if not message.content:
+            continue
+        for _matched, customer_id, _name in resolve_entities(session, message.content):
+            if scope is None or customer_id in scope:
+                return customer_id
+    return None
+
+
+def _customer_candidates(session: Session, user: AppUser, message_text: str) -> list[str]:
+    """Customers whose name shares a distinctive token with the message (RBAC-scoped).
+
+    Cheap, deterministic disambiguation source: for a mention like "hotel aria" that
+    spans several objects, this returns those objects so we can ask which one.
+    """
+    tokens = {
+        token
+        for token in re.findall(r"[0-9a-zčćžšđ]+", normalise(message_text))
+        if len(token) >= 4 and token not in _CANDIDATE_STOPWORDS
+    }
+    if not tokens:
+        return []
+
+    scope = visible_customer_ids(user, session)
+    rows = session.execute(sql_text("SELECT id, name FROM core.customer ORDER BY id")).all()
+    candidates = [
+        name
+        for customer_id, name in ((row.id, row.name) for row in rows)
+        if (scope is None or customer_id in scope)
+        and any(token in normalise(name) for token in tokens)
+    ]
+    return candidates[:6]
+
+
+def _unresolved_customer_reply(session: Session, user: AppUser, message_text: str) -> str:
+    """A short Bosnian clarification when a customer-scoped question names no clear customer."""
+    candidates = _customer_candidates(session, user, message_text)
+    if candidates:
+        listed = ", ".join(candidates)
+        return (
+            "Nisam siguran na kojeg tačno kupca mislite — pronašao sam više mogućnosti: "
+            f"{listed}. Na kojeg mislite? Navedite tačan naziv."
+        )
+    return (
+        "Nisam prepoznao kupca u Vašem pitanju. Možete li navesti tačan naziv kupca "
+        "(kako je zaveden u bazi)?"
+    )
 
 
 def _resolve_param_refs(params: dict[str, Any], context: MaskingContext) -> dict[str, Any]:

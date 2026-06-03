@@ -16,6 +16,34 @@ export interface ApiError {
   error: { code: string; message: string; details?: Record<string, unknown> }
 }
 
+// ── admin: derived-metrics control (admin-recompute-panel) ─────────────────────
+
+export interface TableStat {
+  rows: number
+  computed_at?: string | null
+  last_scan_at?: string | null
+}
+
+export interface MetricsStatus {
+  customer_metrics: TableStat
+  cust_article_cadence: TableStat
+  segment_basket: TableStat
+  client_expectation: TableStat
+  signals: TableStat
+  tasks: TableStat
+}
+
+export interface RecomputeResult {
+  rows: Record<string, number>
+  as_of: string
+}
+
+export interface ScanResult {
+  inserted: number
+  suppressed: number
+  as_of: string
+}
+
 // ── auth ──────────────────────────────────────────────────────────────────────
 
 export interface User {

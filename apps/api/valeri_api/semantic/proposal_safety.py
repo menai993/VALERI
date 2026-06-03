@@ -29,6 +29,11 @@ _COMMENT_TOKENS = ("--", "/*", "*/")
 _BIND_RE = re.compile(r":([a-zA-Z_][a-zA-Z0-9_]*)")
 # Every relation must be schema-qualified (schema.table) after FROM/JOIN.
 _TABLE_REF_RE = re.compile(r"\b(?:from|join)\s+([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)", re.IGNORECASE)
+# PII guard (Principle 6): self-proposed metrics must never read personal PII.
+# core.contact is entirely PII; customer identity must be returned as customer_id,
+# never name/email/phone/address (the app masks/rehydrates by id downstream).
+_PII_TABLES = frozenset({"contact"})
+_PII_COLUMNS = re.compile(r"\b(email|phone|address|telefon|adresa|e_?mail)\b", re.IGNORECASE)
 # A bare FROM/JOIN target that is NOT schema-qualified (caught and rejected).
 _UNQUALIFIED_REF_RE = re.compile(r"\b(?:from|join)\s+([a-zA-Z_]\w*)(?!\s*\.)", re.IGNORECASE)
 
@@ -83,9 +88,16 @@ def validate_metric_sql(
         )
     elif not refs:
         reasons.append("Upit mora čitati bar jednu tabelu (schema.tabela).")
-    for schema, _table in refs:
+    for schema, table in refs:
         if schema.lower() not in _ALLOWED_SCHEMAS:
             reasons.append(f"Nedozvoljena šema: {schema} (dozvoljeno: core, app).")
+        if table.lower() in _PII_TABLES:
+            reasons.append(f"PII tabela nije dozvoljena u metrici: {schema}.{table}.")
+    if _PII_COLUMNS.search(body):
+        reasons.append(
+            "PII kolone (email/telefon/adresa) nisu dozvoljene — vrati identitet kupca "
+            "isključivo kao customer_id."
+        )
 
     used = set(_BIND_RE.findall(sql))
     undeclared = used - declared_params

@@ -43,6 +43,9 @@ def test_accepts_good_select_static() -> None:
         "SELECT line_total FROM core.invoice_line -- sneaky",  # comment
         "SELECT line_total FROM core.invoice_line /* c */",  # comment
         "SELECT format('%s', x) FROM core.invoice",  # interpolation token
+        "SELECT name FROM core.contact",  # PII table
+        "SELECT c.email FROM core.customer c",  # PII column
+        "SELECT phone, address FROM core.customer",  # PII columns
     ],
 )
 def test_rejects_unsafe_sql(sql: str) -> None:

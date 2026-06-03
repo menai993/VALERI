@@ -46,6 +46,20 @@ class ProposalRead(BaseModel):
     activated_at: datetime.datetime | None
 
 
+class MetricProposalDraft(BaseModel):
+    """The LLM's draft (CSA Phase 3b). Fields beyond `can_answer` are only required
+    when can_answer is true; the proposer validates the SQL before anything is stored."""
+
+    can_answer: bool
+    name: str = ""
+    description: str = ""  # Bosnian
+    entity: str = "company"
+    grain: str = "series"
+    params: list[ProposalParam] = []
+    sql: str = ""
+    reasoning: str = ""
+
+
 class ProposalListResponse(BaseModel):
     items: list[ProposalRead]
 

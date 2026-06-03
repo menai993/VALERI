@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from valeri_api.auth.deps import visible_customer_ids
 from valeri_api.auth.models import AppUser
+from valeri_api.config import get_settings
 from valeri_api.conversation.answer import narrate_answer
 from valeri_api.conversation.assistant import narrate_assistant
 from valeri_api.conversation.intent import classify_intent
@@ -127,6 +128,43 @@ def handle_message(
     # "help" (e.g. "šta sve možeš?" → describe_capabilities); only a genuinely
     # empty tool falls through to the assistant.
     if tool_name is None:
+        # Capability self-configuration (CSA Phase 3b): a genuine question-gap → try to
+        # DRAFT a new metric (inert, human-approved, reversible) before the generic
+        # reply. Only for question intent (never greetings); skipped without the gateway.
+        # Run on a question-gap when we can call the LLM: an injected client (tests)
+        # or narration enabled (prod). Skipped when neither, to avoid stray calls.
+        if classification.intent == "question" and (
+            client is not None or get_settings().llm_narration_enabled
+        ):
+            from valeri_api.capabilities.proposer import propose_metric_from_question
+
+            proposal = propose_metric_from_question(
+                session, masked_text, user, source_message_id=user_message.id, client=client
+            )
+            if proposal is not None:
+                return _finish(
+                    session,
+                    conversation,
+                    events,
+                    text=(
+                        f"Trenutno nemam metriku za to, ali mogu je dodati: "
+                        f"„{proposal.description}“. Odobri prijedlog da je aktiviram "
+                        "(vidljivo i reverzibilno)."
+                    ),
+                    register="preporuka",
+                    tool_calls=[{"tool": "propose_capability", "ok": True}],
+                    card={
+                        "card_type": "capability_proposal",
+                        "payload": {
+                            "id": proposal.id,
+                            "name": proposal.name,
+                            "description": proposal.description,
+                            "sql": proposal.sql,
+                            "params": proposal.params,
+                        },
+                    },
+                )
+
         text, register, _ = narrate_assistant(session, user, context, client=client)
         return _finish(
             session,

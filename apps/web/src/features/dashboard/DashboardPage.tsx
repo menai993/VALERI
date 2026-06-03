@@ -22,6 +22,7 @@ import { DataTable, type Column } from "@/components/widgets/DataTable"
 import { DateRangePicker, type RangePreset } from "@/components/widgets/DateRangePicker"
 import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
 import { OwnerReportSummary } from "@/components/widgets/OwnerReportSummary"
+import { RepActivityRow } from "@/components/widgets/RepActivityRow"
 import { RiskBadge } from "@/components/widgets/RiskBadge"
 import { RuleCard } from "@/components/widgets/RuleCard"
 import { StatCard } from "@/components/widgets/StatCard"
@@ -318,11 +319,65 @@ export function DashboardPage() {
         </SectionCard>
       )}
 
-      {/* Row 5: 6/6 — rep activity (Phase 2 placeholder) | owner report summary */}
+      {/* Row 4c: revenue vs plan + run-rate forecast (C-CRM2) — only when a target
+          is set; all figures from SQL/Python, never a target-less tile. */}
+      {data?.revenue_forecast && (
+        <SectionCard title={t.dashboard.revenue_plan.title}>
+          <div
+            className="grid gap-4"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}
+          >
+            <div className="flex flex-col gap-1" data-testid="forecast-actual">
+              <span className="text-sm text-text-2">{t.dashboard.revenue_plan.actual_mtd}</span>
+              <span className="tnum text-[24px] font-bold text-text">
+                {formatMoney(data.revenue_forecast.actual_mtd)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1" data-testid="forecast-target">
+              <span className="text-sm text-text-2">{t.dashboard.revenue_plan.target}</span>
+              <span className="tnum text-[24px] font-bold text-text">
+                {data.revenue_forecast.target
+                  ? formatMoney(data.revenue_forecast.target)
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1" data-testid="forecast-projection">
+              <span className="text-sm text-text-2">{t.dashboard.revenue_plan.forecast}</span>
+              <span className="tnum text-[24px] font-bold text-primary">
+                {formatMoney(data.revenue_forecast.forecast)}
+              </span>
+            </div>
+            {data.revenue_forecast.variance !== null && (
+              <div className="flex flex-col gap-1" data-testid="forecast-variance">
+                <span className="text-sm text-text-2">{t.dashboard.revenue_plan.variance}</span>
+                <span
+                  className={`tnum text-[24px] font-bold ${
+                    Number(data.revenue_forecast.variance) >= 0 ? "text-up" : "text-down"
+                  }`}
+                >
+                  {formatMoney(data.revenue_forecast.variance)}
+                </span>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Row 5: 6/6 — rep activity (C-CRM2, real once logged) | owner report summary */}
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title={t.dashboard.rep_activity.title}>
-          {/* Honest Phase-2 placeholder (ui-design §2) — never fake data */}
-          <EmptyState message={t.dashboard.rep_activity.phase2} />
+          {isLoading && <CardSkeleton rows={4} />}
+          {/* Honest empty — never fake rep activity (ui-design §2) */}
+          {data && (!data.rep_activity || data.rep_activity.reps.length === 0) && (
+            <EmptyState message={t.dashboard.rep_activity.empty} />
+          )}
+          {data?.rep_activity && data.rep_activity.reps.length > 0 && (
+            <div className="flex flex-col divide-y divide-border" data-testid="rep-activity">
+              {data.rep_activity.reps.map((rep) => (
+                <RepActivityRow key={rep.sales_rep_id} rep={rep} />
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title={t.dashboard.owner_report.title}>

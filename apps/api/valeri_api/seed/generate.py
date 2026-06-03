@@ -2,6 +2,7 @@
 
 import random
 
+from valeri_api.seed.activity import generate_activities, generate_revenue_targets
 from valeri_api.seed.articles import generate_articles, generate_categories, select_code_swaps
 from valeri_api.seed.config import SeedConfig
 from valeri_api.seed.entities import generate_contacts, generate_entities, generate_reps
@@ -50,7 +51,11 @@ def generate(config: SeedConfig) -> SeedData:
         rng, customers, customer_reps, config.as_of
     )
 
-    # 7. Ground-truth manifest (measured from the generated data).
+    # 7. Phase-2 CRM (C-CRM2): demo rep activities + the monthly revenue plan.
+    activities = generate_activities(rng, sales_reps, customers, config.as_of)
+    revenue_targets = generate_revenue_targets(rng, config.as_of)
+
+    # 8. Ground-truth manifest (measured from the generated data).
     manifest = build_manifest(config, plan, customers, invoices, invoice_lines)
 
     return SeedData(
@@ -68,4 +73,6 @@ def generate(config: SeedConfig) -> SeedData:
         app_users=app_users,
         opportunities=opportunities,
         opportunity_stage_history=opportunity_stage_history,
+        activities=activities,
+        revenue_targets=revenue_targets,
     )

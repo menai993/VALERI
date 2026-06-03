@@ -156,3 +156,21 @@ LEFT JOIN core.customer c ON c.id = s.customer_id
 WHERE a.kind = 'message'
   AND a.status IN ('draft', 'pending_approval')
 ORDER BY a.id
+
+-- name: opportunity_source
+SELECT COALESCE(o.source, 'nepoznato')                       AS source,
+       COUNT(*)                                              AS count,
+       COALESCE(SUM(o.value), 0)::numeric(14,2)             AS value,
+       COALESCE(SUM(o.value * COALESCE(o.probability,
+         (SELECT (value->>o.stage::text)::numeric
+          FROM app.rule_config WHERE rule = 'crm' AND param = 'stage_probability'))),
+         0)::numeric(14,2)                                   AS weighted_value
+FROM app.opportunity o
+GROUP BY COALESCE(o.source, 'nepoznato')
+ORDER BY value DESC
+
+-- name: opportunity_stats
+SELECT COUNT(*)                                       AS total_count,
+       COALESCE(AVG(o.value), 0)::numeric(14,2)       AS avg_value
+FROM app.opportunity o
+WHERE o.value IS NOT NULL

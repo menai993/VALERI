@@ -4,7 +4,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.models import AppUser
-from valeri_api.crm.models import Opportunity, OpportunityStageHistory
+from valeri_api.crm.models import Activity, Opportunity, OpportunityStageHistory, RevenueTarget
 from valeri_api.domain.models import (
     Article,
     ArticleAlias,
@@ -34,6 +34,8 @@ _INSERT_ORDER = [
     (AppUser, "app_users"),
     (Opportunity, "opportunities"),
     (OpportunityStageHistory, "opportunity_stage_history"),
+    (Activity, "activities"),
+    (RevenueTarget, "revenue_targets"),
 ]
 
 # Tables whose identity sequence must be advanced past the explicit seed IDs.
@@ -49,9 +51,13 @@ _SEQUENCE_TABLES = [
     "app.app_user",
     "app.opportunity",
     "app.opportunity_stage_history",
+    "app.activity",
+    # revenue_target has a TEXT primary key (period) — no identity sequence to advance.
 ]
 
 _ALL_TABLES = [
+    "app.revenue_target",
+    "app.activity",
     "app.opportunity_stage_history",
     "app.opportunity",
     "app.app_user",

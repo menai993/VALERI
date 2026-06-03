@@ -29,6 +29,8 @@ SECTION_KEYS = [
     "uspavani_kupci",
     "zadaci_sedmice",
     "nedavno_potisnuto",
+    "prilike_po_izvoru",  # C-CRM2
+    "prihod_vs_plan",  # C-CRM2
     "prijedlozi_poruka",
 ]
 
@@ -39,6 +41,8 @@ EXPECTED_REGISTERS = {
     "uspavani_kupci": "analiza",
     "zadaci_sedmice": "preporuka",
     "nedavno_potisnuto": "analiza",
+    "prilike_po_izvoru": "analiza",  # C-CRM2
+    "prihod_vs_plan": "analiza",  # C-CRM2
     "prijedlozi_poruka": "akcija",
 }
 
@@ -203,13 +207,61 @@ def test_report_sections_register_tagged(reported_db) -> None:
     assert "placeholder" not in suppressed["data"]  # the M7 placeholder is gone
     assert "Nema potisnutih signala" in suppressed["narrative"]
 
-    # Section 7 items: akcija register (on the section) + an approval status each.
+    # Section items: akcija register (on the section) + an approval status each.
     drafts = _sections_by_key(payload)["prijedlozi_poruka"]
     assert drafts["data"]["items"], "decline/sleeping tasks must produce message drafts"
     for item in drafts["data"]["items"]:
         assert item["status"] in ("draft", "pending_approval")
         assert item["message"]
         assert item["approval_id"]
+
+
+# ── 2c. the C-CRM2 owner-report sections ──────────────────────────────────────
+
+
+def test_opportunity_source_and_revenue_plan_sections(reported_db) -> None:
+    """C-CRM2: the two new sections render register-tagged with numbers == SQL."""
+    engine, report_id, *_ = reported_db
+    payload = _payload(engine, report_id)
+    sections = _sections_by_key(payload)
+
+    # Opportunity-source attribution + avg value: counts/values equal SQL.
+    opp = sections["prilike_po_izvoru"]
+    assert opp["register"] == "analiza"
+    assert opp["narrative"]
+    with engine.connect() as conn:
+        sql_sources = conn.execute(
+            text(
+                "SELECT COALESCE(source, 'nepoznato') AS source, COUNT(*) AS count "
+                "FROM app.opportunity GROUP BY COALESCE(source, 'nepoznato')"
+            )
+        ).all()
+        sql_avg = conn.execute(
+            text(
+                "SELECT COALESCE(AVG(value), 0)::numeric(14,2) FROM app.opportunity "
+                "WHERE value IS NOT NULL"
+            )
+        ).scalar()
+    api_counts = {row["source"]: row["count"] for row in opp["data"]["items"]}
+    for row in sql_sources:
+        assert api_counts.get(row.source) == row.count
+    assert Decimal(opp["data"]["stats"]["avg_value"]) == sql_avg
+
+    # Revenue-vs-plan + forecast: actual MTD equals SQL.
+    plan = sections["prihod_vs_plan"]
+    assert plan["register"] == "analiza"
+    assert plan["narrative"]
+    week_end = datetime.date.fromisoformat(payload["week_end"])
+    with engine.connect() as conn:
+        actual = conn.execute(
+            text(
+                "SELECT COALESCE(SUM(total), 0)::numeric(14,2) FROM core.invoice "
+                "WHERE date_trunc('month', date) = date_trunc('month', CAST(:d AS date)) "
+                "AND date <= CAST(:d AS date)"
+            ),
+            {"d": week_end},
+        ).scalar()
+    assert Decimal(plan["data"]["actual_mtd"]) == actual
 
 
 # ── 2b. the recently-suppressed section (M11) ─────────────────────────────────

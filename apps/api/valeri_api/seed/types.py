@@ -69,3 +69,6 @@ class SeedData:
     # C-CRM1: demo opportunities + their initial stage history (Phase-2 CRM).
     opportunities: list[dict] = field(default_factory=list)
     opportunity_stage_history: list[dict] = field(default_factory=list)
+    # C-CRM2: demo rep activities + the company monthly revenue plan.
+    activities: list[dict] = field(default_factory=list)
+    revenue_targets: list[dict] = field(default_factory=list)

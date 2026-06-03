@@ -104,6 +104,23 @@ export const en: StringCatalog = {
     rep_activity: {
       title: "Sales rep activity",
       phase2: "Available in Phase 2 — requires activity logging",
+      empty: "No activity logged this month",
+      completed: "done",
+      kinds: {
+        meeting: "meetings",
+        call: "calls",
+        offer: "offers",
+        follow_up: "follow-ups",
+        analysis: "analyses",
+      } as Record<string, string>,
+    },
+    revenue_plan: {
+      title: "Revenue vs. plan",
+      actual_mtd: "Actual (MTD)",
+      target: "Plan",
+      forecast: "Forecast",
+      variance: "Variance",
+      no_target: "No plan set for this month",
     },
     owner_report: {
       title: "AI Owner Report",

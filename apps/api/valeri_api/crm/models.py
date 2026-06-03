@@ -60,7 +60,7 @@ class OpportunityStageHistory(Base):
 
 
 class Activity(Base):
-    """Rep activity (data-model.md Phase-2). Created in C-CRM1; used in C-CRM2."""
+    """Rep activity (data-model.md Phase-2). Logged + rolled up in C-CRM2."""
 
     __tablename__ = "activity"
     __table_args__ = {"schema": "app"}
@@ -73,5 +73,18 @@ class Activity(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     done: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RevenueTarget(Base):
+    """The company's monthly revenue plan (C-CRM2). period = 'YYYY-MM'."""
+
+    __tablename__ = "revenue_target"
+    __table_args__ = {"schema": "app"}
+
+    period: Mapped[str] = mapped_column(Text, primary_key=True)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

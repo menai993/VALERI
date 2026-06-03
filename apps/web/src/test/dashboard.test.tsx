@@ -105,6 +105,7 @@ const dashboardFixture: DashboardResponse = {
   },
   recently_suppressed: [],
   opportunities: null,
+  revenue_forecast: null,
 }
 
 function renderDashboard() {
@@ -177,8 +178,8 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Visok")).toBeInTheDocument()
     expect(screen.getByText("Papirni ubrusi 2sl")).toBeInTheDocument()
 
-    // Zone 5: Phase-2 placeholder (honest, no fake data) + owner report summary.
-    expect(screen.getByText(/Dostupno u Fazi 2/)).toBeInTheDocument()
+    // Zone 5: honest empty rep-activity (no data logged) + owner report summary.
+    expect(screen.getByText(/Nema evidentiranih aktivnosti/)).toBeInTheDocument()
     expect(screen.getByTestId("owner-report-summary")).toBeInTheDocument()
   })
 
@@ -264,5 +265,58 @@ describe("DashboardPage", () => {
     expect(list).toHaveTextContent("Nedavno potisnuto")
     expect(list).toHaveTextContent("Hotel Stari Grad")
     expect(list).toHaveTextContent("Pogledajte naučena pravila →")
+  })
+
+  it("renders rep activity + revenue-vs-plan once logged/targeted (C-CRM2)", async () => {
+    const withCrm2: DashboardResponse = {
+      ...dashboardFixture,
+      rep_activity: {
+        as_of: "2026-06-03",
+        reps: [
+          {
+            sales_rep_id: 1,
+            name: "Amela Hodžić",
+            total: 5,
+            done: 3,
+            completion: "0.6000",
+            by_kind: { meeting: 2, call: 1, offer: 1, follow_up: 1, analysis: 0 },
+          },
+        ],
+      },
+      revenue_forecast: {
+        period: "2026-06",
+        actual_mtd: "12000.00",
+        target: "120000.00",
+        variance: "-108000.00",
+        forecast: "120000.00",
+        days_elapsed: 3,
+        days_in_month: 30,
+      },
+    }
+    mockFetch(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(withCrm2), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    )
+
+    renderDashboard()
+
+    // Rep-activity widget: the rep row + its completion (numbers from SQL).
+    await waitFor(() => expect(screen.getByTestId("rep-activity")).toBeInTheDocument())
+    const repBlock = screen.getByTestId("rep-activity")
+    expect(repBlock).toHaveTextContent("Amela Hodžić")
+    expect(repBlock).toHaveTextContent("60% završeno")
+    // by_kind summary shows the non-zero kinds, hides analysis (0).
+    expect(repBlock).toHaveTextContent("2 sastanci")
+    expect(repBlock).not.toHaveTextContent("0 analize")
+
+    // Revenue-vs-plan tile: actual / target / forecast / variance, all from SQL/Python.
+    expect(screen.getByTestId("forecast-actual")).toHaveTextContent("12.000")
+    expect(screen.getByTestId("forecast-target")).toHaveTextContent("120.000")
+    expect(screen.getByTestId("forecast-projection")).toHaveTextContent("120.000")
+    expect(screen.getByTestId("forecast-variance")).toBeInTheDocument()
   })
 })

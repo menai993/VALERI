@@ -102,6 +102,23 @@ export const bs = {
     rep_activity: {
       title: "Aktivnosti komercijalista",
       phase2: "Dostupno u Fazi 2 — zahtijeva evidenciju aktivnosti",
+      empty: "Nema evidentiranih aktivnosti ovaj mjesec",
+      completed: "završeno",
+      kinds: {
+        meeting: "sastanci",
+        call: "pozivi",
+        offer: "ponude",
+        follow_up: "praćenja",
+        analysis: "analize",
+      } as Record<string, string>,
+    },
+    revenue_plan: {
+      title: "Prihod vs. plan",
+      actual_mtd: "Ostvareno (mjesec)",
+      target: "Plan",
+      forecast: "Projekcija",
+      variance: "Razlika",
+      no_target: "Plan za ovaj mjesec nije postavljen",
     },
     owner_report: {
       title: "AI Owner Report",

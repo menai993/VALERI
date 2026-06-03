@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "./client"
 import type {
+  ActivityKind,
+  ActivityRead,
   Approval,
   ApplyResponse,
   ArticleRow,
@@ -31,6 +33,7 @@ import type {
   OwnerReport,
   OwnerReportSummary,
   Paginated,
+  RepActivityBlock,
   RuleConfigEntry,
   RuleScope,
   SignalRow,
@@ -382,6 +385,34 @@ export function useUpdateOpportunity() {
       api.patch<Opportunity>(`/api/opportunities/${id}`, changes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["opportunities"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+// ── rep activity (C-CRM2) ─────────────────────────────────────────────────────
+
+/** Per-rep activity rollup for a month (owner/admin/finance see all; reps their own). */
+export function useRepActivity(date: string) {
+  return useQuery<RepActivityBlock>({
+    queryKey: ["reps", "activity", date],
+    queryFn: () => api.get<RepActivityBlock>("/api/reps/activity", { date }),
+    retry: false,
+  })
+}
+
+/** Log one activity (rep's sales_rep_id is forced server-side; finance forbidden). */
+export function useLogActivity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      kind: ActivityKind
+      customer_id?: number
+      done?: boolean
+      sales_rep_id?: number
+    }) => api.post<ActivityRead>("/api/activity", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reps", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
   })

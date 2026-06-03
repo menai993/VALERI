@@ -129,10 +129,11 @@ export interface DashboardResponse {
   ai_insights: InsightRow[]
   customers_at_risk: AtRiskRow[]
   lost_articles: LostArticleRow[]
-  rep_activity: null
+  rep_activity: RepActivityBlock | null // C-CRM2: Aktivnosti komercijalista (null until logged)
   owner_report_summary: OwnerReportSummary | null
   recently_suppressed: RecentlySuppressedRow[]
   opportunities: OpportunitySummary | null // C-CRM1: the Prilike block (null until used)
+  revenue_forecast: RevenueForecast | null // C-CRM2: revenue-vs-plan (null until a target is set)
 }
 
 // ── customers ─────────────────────────────────────────────────────────────────
@@ -438,6 +439,45 @@ export interface OpportunitySummary {
     probability: string | null
     weighted_value: string
   }[]
+}
+
+// ── rep activity + forecasting (C-CRM2) ───────────────────────────────────────
+
+export type ActivityKind = "meeting" | "call" | "offer" | "follow_up" | "analysis"
+
+/** One rep's activity rollup for the month: counts by kind + completion (all SQL). */
+export interface RepActivityRow {
+  sales_rep_id: number
+  name: string | null
+  total: number
+  done: number
+  completion: string // done / total, "0.0000" when none
+  by_kind: Record<string, number>
+}
+
+export interface RepActivityBlock {
+  as_of: string
+  reps: RepActivityRow[]
+}
+
+/** Revenue-vs-plan + a simple run-rate forecast for the current month (SQL/Python). */
+export interface RevenueForecast {
+  period: string // 'YYYY-MM'
+  actual_mtd: string // SUM(invoice.total) this month
+  target: string | null // revenue_target for the period (null if unset)
+  variance: string | null // actual − target (null if no target)
+  forecast: string // actual_mtd / days_elapsed × days_in_month
+  days_elapsed: number
+  days_in_month: number
+}
+
+export interface ActivityRead {
+  id: number
+  sales_rep_id: number
+  customer_id: number | null
+  kind: ActivityKind
+  done: boolean
+  at: string
 }
 
 // ── investigations (M13) ──────────────────────────────────────────────────────

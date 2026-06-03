@@ -97,3 +97,76 @@ class OpportunitySummary(BaseModel):
     conversion_rate: str
     weighted_value: str
     top: list[OpportunitySummaryRow]
+
+
+# ── activity (C-CRM2) ─────────────────────────────────────────────────────────
+
+ActivityKind = Literal["meeting", "call", "offer", "follow_up", "analysis"]
+
+
+class ActivityCreate(BaseModel):
+    kind: ActivityKind
+    customer_id: int | None = None
+    done: bool = False
+    sales_rep_id: int | None = None  # owner/admin may log for any rep; reps forced to own
+    at: datetime.datetime | None = None
+
+
+class ActivityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sales_rep_id: int
+    customer_id: int | None
+    kind: ActivityKind
+    done: bool
+    at: datetime.datetime
+
+
+class RepActivityRow(BaseModel):
+    """One rep's activity rollup for a period (counts by kind + completion)."""
+
+    sales_rep_id: int
+    name: str | None
+    total: int
+    done: int
+    completion: str  # done / total, "0.0000" when none
+    by_kind: dict[str, int]
+
+
+class RepActivityBlock(BaseModel):
+    as_of: datetime.date
+    reps: list[RepActivityRow]
+
+
+# ── forecasting (C-CRM2) ──────────────────────────────────────────────────────
+
+
+class RevenueForecast(BaseModel):
+    """Revenue-vs-plan + a simple run-rate forecast for the current month — all SQL/Python."""
+
+    period: str  # 'YYYY-MM'
+    actual_mtd: str  # SUM(invoice.total) this month
+    target: str | None  # revenue_target for the period (None if unset)
+    variance: str | None  # actual − target (None if no target)
+    forecast: str  # actual_mtd / days_elapsed × days_in_month
+    days_elapsed: int
+    days_in_month: int
+
+
+# ── owner-report CRM sections (C-CRM2) ────────────────────────────────────────
+
+
+class OpportunitySourceRow(BaseModel):
+    source: str | None
+    count: int
+    value: str
+    weighted_value: str
+
+
+class OpportunityStats(BaseModel):
+    """Opportunity-source attribution + average opportunity value (owner report)."""
+
+    by_source: list[OpportunitySourceRow]
+    avg_value: str
+    total_count: int

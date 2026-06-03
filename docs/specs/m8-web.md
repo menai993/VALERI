@@ -1,6 +1,6 @@
 # Spec — M8: Web app (owner command dashboard) + auth/RBAC
 
-**Milestone:** M8 · **Builds on:** M7 (all dashboard data exists: metrics, signals, tasks, owner report) · **Status:** awaiting owner review
+**Milestone:** M8 · **Builds on:** M7 (all dashboard data exists: metrics, signals, tasks, owner report) · **Status:** approved (D1–D8 OK'd by owner, 2026-06-03)
 
 > Re-verified against the doc set updated 2026-06-03 (new CLAUDE.md conventions, architecture §8
 > language policy, VALERI-IMPLEMENTATION-PLAN.md): the M8 milestone scope is unchanged. The

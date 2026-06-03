@@ -71,6 +71,7 @@ export function ChatPage() {
     let replyText = ""
     let card: ChatMessageProps["card"] = null
     let toolCalls: ChatToolCall[] = []
+    let capture: ChatMessageProps["capture"] = null
 
     const sessionId = await ensureSession()
     await postSSE(`/api/chat/sessions/${sessionId}/messages`, { text }, (event: ChatSSEEvent) => {
@@ -80,6 +81,14 @@ export function ChatPage() {
         card = {
           card_type: String(event.card_type),
           payload: (event.payload ?? {}) as Record<string, unknown>,
+        }
+      }
+      if (event.type === "capture") {
+        capture = {
+          titles: (event.titles ?? []) as string[],
+          autoSaved: Number(event.auto_saved ?? 0),
+          proposed: Number(event.proposed ?? 0),
+          clarifications: Number(event.clarifications ?? 0),
         }
       }
       if (event.type === "done") {
@@ -92,11 +101,13 @@ export function ChatPage() {
 
     setLiveMessages((previous) => [
       ...previous,
-      { role: "assistant", content: replyText, register, toolCalls, card, capture: true },
+      { role: "assistant", content: replyText, register, toolCalls, card, capture },
     ])
     setStreaming(false)
-    // CI1: capture runs in the background server-side; refresh the review queue.
-    queryClient.invalidateQueries({ queryKey: ["kb", "pending"] })
+    // Capture is committed before the reply closes; refresh the review queue (no race).
+    if (capture) {
+      queryClient.invalidateQueries({ queryKey: ["kb", "pending"] })
+    }
   }
 
   function openSession(sessionId: number) {

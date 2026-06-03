@@ -10,7 +10,7 @@ import logging
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from valeri_api.conversation.schemas import (
     SessionHistoryResponse,
     SessionListResponse,
     SessionSummary,
+    SSEEvent,
 )
 from valeri_api.conversation.service import handle_message
 from valeri_api.db import get_session, session_scope
@@ -34,19 +35,49 @@ logger = logging.getLogger("valeri.api.chat")
 router = APIRouter()
 
 
-def _capture_from_message(message_id: int, user_id: int, message_text: str) -> None:
-    """CI1: run knowledge capture on a chat message, async + non-blocking.
+def _capture_label(item: object) -> str:
+    """A short label for a captured fact/event (title) or relationship."""
+    title = getattr(item, "title", None)
+    if title:
+        return str(title)
+    return (
+        f"{getattr(item, 'from_name', '?')} → {getattr(item, 'to_name', '?')} "
+        f"({getattr(item, 'rel_type', 'veza')})"
+    )
 
-    Its own short-lived session (the request's is closed once the response streams).
-    Capture must never break the chat reply — any failure is logged and swallowed.
+
+def _capture_event(message_id: int, user_id: int, message_text: str) -> SSEEvent | None:
+    """CI1/CI2: capture knowledge synchronously in its OWN session (isolated from the
+    chat transaction), and return a 'capture' SSE event when something was captured.
+
+    Runs in its own session_scope so a capture failure can never corrupt the reply;
+    run_capture already swallows extraction failures (audit preserved). Returns None
+    (no chip) when nothing was captured.
     """
     from valeri_api.kb.pipeline import run_capture
 
     try:
         with session_scope() as session:
-            run_capture(session, text_in=message_text, user_id=user_id, message_id=message_id)
+            captured = run_capture(
+                session, text_in=message_text, user_id=user_id, message_id=message_id
+            )
+            total = len(captured.auto_saved) + len(captured.proposed) + len(captured.clarifications)
+            if total == 0:
+                return None
+            return SSEEvent(
+                type="capture",
+                data={
+                    "auto_saved": len(captured.auto_saved),
+                    "proposed": len(captured.proposed),
+                    "clarifications": len(captured.clarifications),
+                    "titles": [
+                        _capture_label(i) for i in (*captured.auto_saved, *captured.proposed)
+                    ][:5],
+                },
+            )
     except Exception:  # noqa: BLE001 — capture is best-effort, never fatal to chat
         logger.exception("kb capture failed for message %s", message_id)
+        return None
 
 
 def _get_owned_conversation(session: Session, conversation_id: int, user_id: int) -> Conversation:
@@ -112,20 +143,20 @@ def get_history(
 def post_message(
     session_id: int,
     body: MessageCreate,
-    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
     user: CurrentUser,
 ) -> StreamingResponse:
-    """Send a message; the reply streams as SSE (tool_call → register → token → card? → done)."""
+    """Send a message; the reply streams as SSE (tool_call → register → token → capture? → done)."""
     conversation = _get_owned_conversation(session, session_id, user.id)
 
     # D3: the full pipeline runs, then events stream. The SSE contract stays the
     # same when true incremental streaming is added later.
     events = handle_message(session, user, conversation, body.text)
-    session.commit()
+    session.commit()  # the answer (+ the user message) are persisted first
 
-    # CI1: capture knowledge from the message in the background (non-blocking).
-    # Prod-only — capture needs the gateway; with narration off (e.g. tests) it's skipped.
+    # CI1/CI2: capture knowledge synchronously in its own session, then surface what
+    # was captured inline (the capture chip) — committed before the reply closes, so
+    # the review queue refetch never races it. Prod-only (needs the gateway; tests skip).
     if get_settings().llm_narration_enabled:
         user_message_id = session.execute(
             select(Message.id)
@@ -134,7 +165,9 @@ def post_message(
             .limit(1)
         ).scalar()
         if user_message_id is not None:
-            background_tasks.add_task(_capture_from_message, user_message_id, user.id, body.text)
+            capture_event = _capture_event(user_message_id, user.id, body.text)
+            if capture_event is not None and events and events[-1].type == "done":
+                events.insert(-1, capture_event)  # right before 'done'
 
     def event_stream() -> Iterator[str]:
         for event in events:

@@ -62,7 +62,7 @@ class ChatAnswer(BaseModel):
 class SSEEvent(BaseModel):
     """One server-sent event of the chat stream."""
 
-    type: Literal["tool_call", "register", "token", "card", "done", "error"]
+    type: Literal["tool_call", "register", "token", "card", "capture", "done", "error"]
     data: dict[str, Any] = {}
 
 

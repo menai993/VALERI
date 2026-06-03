@@ -44,6 +44,8 @@ export const en: StringCatalog = {
     undo: "Undo",
     edit: "Edit",
     captured: "VALERI is capturing in the background",
+    captured_prefix: "VALERI noted",
+    questions: "questions",
     review_link: "View Notes →",
     queue_title: "Notes",
     queue_subtitle: "Records awaiting confirmation",

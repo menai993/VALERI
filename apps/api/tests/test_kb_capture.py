@@ -10,7 +10,22 @@ from sqlalchemy.orm import Session
 
 from tests.fakes import FakeKbLLM
 from valeri_api.kb.pipeline import mask_for_capture, run_capture
+from valeri_api.llm.client import LLMResponse
 from valeri_api.llm.masking import MaskingContext, pseudonym
+
+
+class _GateOkExtractionFails:
+    """Gate passes, but extraction always returns malformed JSON (hard failure)."""
+
+    model = "fake-tier1"
+
+    def __init__(self) -> None:
+        self.captured: list[dict] = []
+
+    def complete(self, system: str, user: str) -> LLMResponse:
+        self.captured.append({"system": system, "user": user})
+        body = '{"relevant": true}' if "filter relevantnosti" in system else "{ not valid json"
+        return LLMResponse(text=body, model=self.model, tokens=50, latency_ms=30)
 
 
 def _add_customer(session: Session, name: str, segment: str = "hotel") -> int:
@@ -256,6 +271,28 @@ async def test_person_name_masked_before_model(db_session: Session) -> None:
     assert "Marko Marković" not in masked  # personal name redacted
     assert "[osoba]" in masked
     assert "Fupupu" in masked  # unknown business name kept for resolution (§8.6)
+
+
+@pytest.mark.anyio
+async def test_capture_survives_extraction_failure_and_keeps_audit(db_session: Session) -> None:
+    """A hard extraction failure captures nothing but does NOT raise, so the caller
+    commits the audit.ai_log rows the failed attempts wrote (principle 7)."""
+    before = db_session.execute(text("SELECT count(*) FROM audit.ai_log")).scalar_one()
+
+    response = run_capture(
+        db_session,
+        text_in="Hotel posluje slabije ovih dana.",
+        user_id=1,
+        client=_GateOkExtractionFails(),
+    )
+
+    # Nothing captured, and crucially no exception propagated.
+    assert response.auto_saved == []
+    assert response.proposed == []
+    assert response.clarifications == []
+    # The rejected extraction attempts are recorded in the audit log (not rolled back).
+    after = db_session.execute(text("SELECT count(*) FROM audit.ai_log")).scalar_one()
+    assert after - before >= 1
 
 
 @pytest.mark.anyio

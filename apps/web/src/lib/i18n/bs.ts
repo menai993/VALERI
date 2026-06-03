@@ -42,6 +42,8 @@ export const bs = {
     undo: "Poništi",
     edit: "Izmijeni",
     captured: "VALERI bilježi u pozadini",
+    captured_prefix: "VALERI je zabilježio",
+    questions: "pitanja",
     review_link: "Pogledajte Zabilješke →",
     queue_title: "Zabilješke",
     queue_subtitle: "Zapisi koje treba potvrditi",

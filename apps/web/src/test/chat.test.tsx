@@ -2,6 +2,7 @@
  * M10: the inline rule-proposal card (register + description + one-tap confirm). */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import { MemoryRouter } from "react-router"
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { ChatMessage } from "@/features/chat/ChatMessage"
@@ -150,5 +151,35 @@ describe("ChatMessage", () => {
     expect(card).toHaveTextContent("Primijenjeno (reverzibilno)")
     expect(card).toHaveTextContent("poništiti")
     expect(screen.queryByTestId("chat-apply-rule")).not.toBeInTheDocument()
+  })
+
+  it("renders the capture chip with what VALERI captured (CI1)", () => {
+    render(
+      <MemoryRouter>
+        <I18nProvider>
+          <ChatMessage
+            role="assistant"
+            content="Promet je stabilan."
+            register="analiza"
+            capture={{
+              titles: ["deal · Godišnji ugovor", "intent · category_expansion"],
+              autoSaved: 1,
+              proposed: 1,
+              clarifications: 1,
+            }}
+          />
+        </I18nProvider>
+      </MemoryRouter>,
+    )
+    const chip = screen.getByTestId("capture-chip")
+    expect(chip).toHaveTextContent("VALERI je zabilježio")
+    expect(chip).toHaveTextContent("Godišnji ugovor")
+    expect(chip).toHaveTextContent("1 pitanja")
+    expect(chip).toHaveTextContent("Pogledajte Zabilješke")
+  })
+
+  it("shows no capture chip when nothing was captured", () => {
+    withProviders(<ChatMessage role="assistant" content="Pozdrav." register="analiza" />)
+    expect(screen.queryByTestId("capture-chip")).not.toBeInTheDocument()
   })
 })

@@ -27,6 +27,7 @@ from valeri_api.kb.resolution import resolve_mention
 from valeri_api.kb.schemas import CaptureResponse, ClarificationRead, ResolutionResult
 from valeri_api.llm.client import LLMClient
 from valeri_api.llm.masking import MaskingContext
+from valeri_api.llm.schemas import NarrationFailed
 
 logger = logging.getLogger("valeri.kb.pipeline")
 
@@ -127,14 +128,21 @@ def run_capture(
         return CaptureResponse()
 
     # ── extraction ────────────────────────────────────────────────────────────
-    result = extract_candidates(
-        session,
-        masked_text=masked_text,
-        raw_text=text_in,
-        customer_focus=focus_pseudonym,
-        message_id=message_id,
-        client=client,
-    )
+    # A hard extraction failure is not fatal: capture nothing, but DON'T raise — so
+    # the caller still commits the audit.ai_log rows the failed attempts wrote
+    # (principle 7: the audit is append-only and must survive a failed capture).
+    try:
+        result = extract_candidates(
+            session,
+            masked_text=masked_text,
+            raw_text=text_in,
+            customer_focus=focus_pseudonym,
+            message_id=message_id,
+            client=client,
+        )
+    except NarrationFailed as failure:
+        logger.info("kb extraction failed (%s); nothing captured, audit preserved", failure.reason)
+        return CaptureResponse()
 
     dispositions: list[dict] = []
     # One clarification per ambiguous mentioned name across this whole capture.

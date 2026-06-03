@@ -1,6 +1,6 @@
 # Spec — M9: Safe tool catalog + intent router + chat (Ask VALERI)
 
-**Milestone:** M9 · **Builds on:** M8 (auth/RBAC, dashboard APIs, web shell) · **Status:** awaiting owner review
+**Milestone:** M9 · **Builds on:** M8 (auth/RBAC, dashboard APIs, web shell) · **Status:** approved (D1–D6 OK'd by owner, 2026-06-03)
 
 ## 1. Objective
 

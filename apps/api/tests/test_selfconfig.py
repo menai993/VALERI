@@ -458,6 +458,38 @@ def test_proposer_masks_pii(sc, seed_data) -> None:
     assert rule["entity_id"] == signal.customer_id
 
 
+def test_free_text_proposal_redacts_unknown_names(sc) -> None:
+    """An unrecognised customer name in free-text feedback never reaches the prompt.
+
+    Masking can only pseudonymise names it knows; anything name-like that does
+    not resolve is redacted before the LLM call (principle 6 hardening).
+    """
+    from valeri_api.llm.masking import REDACTED_TOKEN
+    from valeri_api.selfconfig.proposer import propose_from_text
+
+    session, owner, _, _ = sc
+    fake = ProposerFakeLLMClient(category_proposal())
+
+    propose_from_text(
+        session,
+        "Ne prijavljuj signale za Hotel Hilltop, kafići su sezonski.",
+        owner,
+        client=fake,
+    )
+
+    all_prompts = "\n".join(item["system"] + "\n" + item["user"] for item in fake.captured)
+    assert "Hilltop" not in all_prompts, "an unresolved customer name leaked into the prompt"
+    assert REDACTED_TOKEN in all_prompts
+
+    # The ai_log copy of the masked input is equally clean.
+    masked_inputs = [
+        json.dumps(row[0], ensure_ascii=False)
+        for row in session.execute(text("SELECT masked_input FROM audit.ai_log"))
+    ]
+    assert masked_inputs
+    assert all("Hilltop" not in masked for masked in masked_inputs)
+
+
 # ── 8. threshold-kind rules update rule_config reversibly ─────────────────────
 
 

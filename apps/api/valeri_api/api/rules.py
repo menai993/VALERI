@@ -20,6 +20,7 @@ from valeri_api.selfconfig.applier import (
     RuleNotFound,
     apply_rule,
     edit_scope,
+    keep_rule,
     undo_rule,
 )
 from valeri_api.selfconfig.schemas import (
@@ -31,7 +32,7 @@ from valeri_api.selfconfig.schemas import (
     LearnedRuleListResponse,
     LearnedRuleRead,
     ScopePatchRequest,
-    SuppressionHitRead,
+    SuppressionHitDetail,
 )
 
 router = APIRouter()
@@ -40,13 +41,29 @@ router = APIRouter()
 Reader = Annotated[AppUser, Depends(require_roles("owner", "admin", "finance"))]
 Mutator = Annotated[AppUser, Depends(require_roles("owner", "admin"))]
 
+# M11: every rule carries its origin (rehydrated names — this is human-facing API
+# output), its SQL-counted effect, and whether the auditor has an open Na provjeri flag.
 _RULE_SELECT = """
 SELECT lr.id, lr.source_signal_id, lr.source_message_id, lr.domain, lr.rule_type,
        lr.scope, lr.description, lr.effect_estimate, lr.status, lr.autonomy,
        lr.created_by, lr.created_at, lr.expires_at,
        (SELECT COUNT(*) FROM app.suppression_hit h WHERE h.learned_rule_id = lr.id)
-           AS suppression_count
+           AS suppression_count,
+       src_c.name AS source_customer_name,
+       au.name AS created_by_name,
+       EXISTS (
+         SELECT 1 FROM app.decision d
+         WHERE d.kind = 'reactivation' AND (d.payload->>'review')::boolean
+           AND (d.payload->>'learned_rule_id')::bigint = lr.id
+           AND NOT EXISTS (
+             SELECT 1 FROM app.decision r
+             WHERE r.id > d.id AND r.kind IN ('approval', 'undo')
+               AND (r.payload->>'learned_rule_id')::bigint = lr.id)
+       ) AS na_provjeri
 FROM app.learned_rule lr
+LEFT JOIN app.signal src ON src.id = lr.source_signal_id
+LEFT JOIN core.customer src_c ON src_c.id = src.customer_id
+LEFT JOIN app.app_user au ON au.id = lr.created_by
 """
 
 
@@ -114,10 +131,16 @@ def get_learned_rule(
     if rule is None:
         raise _not_found(f"Naučeno pravilo {rule_id} ne postoji")
 
+    # "What it hid, viewable": each hit joined to its suppressed signal's evidence.
     hits = session.execute(
         text(
-            "SELECT id, learned_rule_id, signal_id, suppressed_at "
-            "FROM app.suppression_hit WHERE learned_rule_id = :id ORDER BY id DESC"
+            "SELECT h.id, h.learned_rule_id, h.signal_id, h.suppressed_at, "
+            "       s.rule, s.customer_id, c.name AS customer_name, "
+            "       s.evidence, s.confidence, s.conf_band "
+            "FROM app.suppression_hit h "
+            "LEFT JOIN app.signal s ON s.id = h.signal_id "
+            "LEFT JOIN core.customer c ON c.id = s.customer_id "
+            "WHERE h.learned_rule_id = :id ORDER BY h.id DESC"
         ),
         {"id": rule_id},
     ).mappings()
@@ -132,7 +155,7 @@ def get_learned_rule(
 
     return LearnedRuleDetailResponse(
         rule=LearnedRuleRead(**dict(rule)),
-        hits=[SuppressionHitRead(**dict(hit)) for hit in hits],
+        hits=[SuppressionHitDetail(**dict(hit)) for hit in hits],
         decisions=[DecisionRead(**dict(decision)) for decision in decisions],
     )
 
@@ -164,6 +187,23 @@ def undo_learned_rule(
     """Revert a rule (status='reverted') + write the undo decision."""
     try:
         response = undo_rule(session, rule_id, user)
+    except RuleNotFound as error:
+        raise _not_found(str(error)) from error
+    except InvalidRuleState as error:
+        raise _conflict(str(error)) from error
+    session.commit()
+    return response
+
+
+@router.post("/learned-rules/{rule_id}/keep", response_model=ApplyResponse)
+def keep_learned_rule(
+    rule_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    user: Mutator,
+) -> ApplyResponse:
+    """Zadrži (M11): resolve the rule's open Na provjeri flag — writes an approval decision."""
+    try:
+        response = keep_rule(session, rule_id, user)
     except RuleNotFound as error:
         raise _not_found(str(error)) from error
     except InvalidRuleState as error:

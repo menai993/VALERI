@@ -16,13 +16,17 @@ import type {
   CustomerDetail,
   CustomerRow,
   DashboardResponse,
+  Decision,
   DismissResponse,
   Items,
+  LearnedRule,
+  LearnedRuleDetail,
   LostArticleRow,
   OwnerReport,
   OwnerReportSummary,
   Paginated,
   RuleConfigEntry,
+  RuleScope,
   SignalRow,
   TaskRow,
   User,
@@ -204,6 +208,56 @@ export function useApplyRuleMutation() {
       api.post<ApplyResponse>("/api/rules/apply", { learned_rule_id: learnedRuleId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["signals"] })
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+// ── learned rules + decisions (M11: "Šta je VALERI naučio") ───────────────────
+
+export function useLearnedRules(status?: string) {
+  return useQuery<Items<LearnedRule>>({
+    queryKey: ["learnedRules", status],
+    queryFn: () => api.get<Items<LearnedRule>>("/api/learned-rules", { status }),
+  })
+}
+
+export function useLearnedRuleDetail(ruleId: number | null) {
+  return useQuery<LearnedRuleDetail>({
+    queryKey: ["learnedRules", "detail", ruleId],
+    queryFn: () => api.get<LearnedRuleDetail>(`/api/learned-rules/${ruleId}`),
+    enabled: ruleId !== null,
+  })
+}
+
+export function useDecisions(kind?: string) {
+  return useQuery<Items<Decision>>({
+    queryKey: ["decisions", kind],
+    queryFn: () => api.get<Items<Decision>>("/api/audit/decisions", { kind }),
+  })
+}
+
+/** Edit a rule's scope (writes a reversible decision). */
+export function useEditScopeMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ruleId, scope }: { ruleId: number; scope: RuleScope }) =>
+      api.patch<ApplyResponse>(`/api/learned-rules/${ruleId}/scope`, { scope }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+/** Zadrži (M11): resolve a Na provjeri flag by keeping the rule (approval decision). */
+export function useKeepRuleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (learnedRuleId: number) =>
+      api.post<ApplyResponse>(`/api/learned-rules/${learnedRuleId}/keep`),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
       queryClient.invalidateQueries({ queryKey: ["decisions"] })
     },

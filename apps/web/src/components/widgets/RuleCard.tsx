@@ -33,8 +33,14 @@ import {
 import type { DismissResponse, InsightRow, RuleScope } from "@/lib/api/types"
 import { useT } from "@/lib/i18n"
 
-/** Human-readable chips for a (resolved) rule scope. */
-function ScopeChips({ scope, customerName }: { scope: RuleScope; customerName?: string | null }) {
+/** Human-readable chips for a (resolved) rule scope. Reused by LearnedRuleCard (M11). */
+export function ScopeChips({
+  scope,
+  customerName,
+}: {
+  scope: RuleScope
+  customerName?: string | null
+}) {
   const t = useT()
   const ruleLabel = scope.rule ? (t.rules[scope.rule as keyof typeof t.rules] ?? scope.rule) : null
   return (

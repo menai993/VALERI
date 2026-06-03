@@ -1,6 +1,6 @@
 # Spec — M11: "Šta je VALERI naučio" + over-suppression auditor
 
-**Milestone:** M11 · **Builds on:** M10 (learned rules, suppression persistence, decisions API), M7 (weekly report), M4 (scanner) · **Status:** approved (D1–D6 defaults OK'd by owner, 2026-06-03)
+**Milestone:** M11 · **Builds on:** M10 (learned rules, suppression persistence, decisions API), M7 (weekly report), M4 (scanner) · **Status:** implemented (15 auditor + 10 selfconfig/report/dashboard tests; full backend 212 + web 49 green, 2026-06-03)
 
 ## 1. Objective
 

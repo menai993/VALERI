@@ -112,6 +112,18 @@ class MetricsOverview(BaseModel):
     kpis: list[KpiTile]
 
 
+class RecentlySuppressedRow(BaseModel):
+    """One recently-hidden detection (M11): which learned rule hid what, when."""
+
+    hit_id: int
+    learned_rule_id: int
+    description: str
+    rule: str | None
+    customer_id: int | None
+    customer_name: str | None  # rehydrated — the dashboard is human-facing
+    suppressed_at: datetime.datetime
+
+
 class DashboardResponse(BaseModel):
     """GET /dashboard — the Početna payload in one call."""
 
@@ -124,4 +136,4 @@ class DashboardResponse(BaseModel):
     lost_articles: list[LostArticleRow]
     rep_activity: None = None  # Phase 2 placeholder — never fake data
     owner_report_summary: dict[str, Any] | None = None  # M7 extract_summary payload
-    recently_suppressed: list[dict[str, Any]] = []  # filled in M11
+    recently_suppressed: list[RecentlySuppressedRow] = []  # M11: the self-config audit trail

@@ -25,6 +25,7 @@ from valeri_api.metrics.schemas import (
     KpiProgress,
     KpiTile,
     LostArticleRow,
+    RecentlySuppressedRow,
     RevenueTrend,
 )
 
@@ -196,6 +197,31 @@ def customer_360(session: Session, customer_id: int, as_of: datetime.date) -> Cu
 
 # ── the one-call dashboard payload ────────────────────────────────────────────
 
+# How many recent suppressions the dashboard lists (presentation choice, D6).
+SUPPRESSED_LIMIT = 10
+
+
+def recently_suppressed_rows(
+    session: Session, limit: int = SUPPRESSED_LIMIT
+) -> list[RecentlySuppressedRow]:
+    """The last N suppression hits (M11): what learned rules recently hid — pure SQL."""
+    rows = session.execute(
+        text(
+            "SELECT h.id AS hit_id, h.suppressed_at, lr.id AS learned_rule_id, lr.description, "
+            "       s.rule, s.customer_id, c.name AS customer_name "
+            "FROM app.suppression_hit h "
+            "JOIN app.learned_rule lr ON lr.id = h.learned_rule_id "
+            "LEFT JOIN app.signal s ON s.id = h.signal_id "
+            "LEFT JOIN core.customer c ON c.id = s.customer_id "
+            "ORDER BY h.id DESC LIMIT :limit"
+        ),
+        {"limit": limit},
+    ).mappings()
+    return [
+        RecentlySuppressedRow(**{**jsonable(dict(row)), "suppressed_at": row["suppressed_at"]})
+        for row in rows
+    ]
+
 
 def assemble_dashboard(
     session: Session,
@@ -214,7 +240,7 @@ def assemble_dashboard(
         lost_articles=lost_article_rows(session),
         rep_activity=None,
         owner_report_summary=owner_report_summary,
-        recently_suppressed=[],
+        recently_suppressed=recently_suppressed_rows(session),
     )
 
 

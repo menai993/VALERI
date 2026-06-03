@@ -45,6 +45,9 @@ const pendingRule: LearnedRule = {
   created_at: "2026-06-03T10:00:00Z",
   expires_at: null,
   suppression_count: 0,
+  source_customer_name: "Hotel Stari Grad — Objekat 1",
+  created_by_name: "Vlasnik",
+  na_provjeri: false,
 }
 
 /** A broad (category) proposal → requires the one-tap confirm. */

@@ -70,6 +70,12 @@ def run_scan(
     if recompute:
         recompute_all(session, as_of=reference_date)
 
+    # M11: expiry first — an expired rule must not suppress even one more scan.
+    # Lazy import: selfconfig builds on the scanner, not the other way around.
+    from valeri_api.selfconfig.auditor import expire_rules
+
+    expire_rules(session)
+
     suppressions = load_active_suppressions(session)
     existing_keys = open_signal_keys(session)
 

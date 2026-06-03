@@ -182,6 +182,7 @@ async def test_dashboard_envelope_on_every_ai_row(dashboard_payload) -> None:
 
     # Phase-2 placeholders are explicit, never fake data.
     assert body["rep_activity"] is None
+    # M11: no learned rules in this fixture → the suppressed list is honestly empty.
     assert body["recently_suppressed"] == []
 
 
@@ -207,3 +208,73 @@ async def test_dashboard_range_presets(dashboard_db) -> None:
         assert Decimal(kpis["ukupan_prihod"]["value"]) == revenue_90d
     finally:
         await client.aclose()
+
+
+# ── M11: the recently-suppressed list ─────────────────────────────────────────
+
+
+def test_recently_suppressed_rows_match_sql(dashboard_db) -> None:
+    """The dashboard's recently-suppressed payload is pure SQL pass-through."""
+    import json
+
+    from valeri_api.metrics.dashboard import recently_suppressed_rows
+
+    engine, _ = dashboard_db
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    try:
+        customer = session.execute(text("SELECT id, name FROM core.customer LIMIT 1")).one()
+        rule_id = session.execute(
+            text(
+                "INSERT INTO app.learned_rule "
+                "(domain, rule_type, scope, description, status, autonomy) VALUES "
+                "('sales', 'suppress', CAST(:scope AS jsonb), "
+                " 'Test pravilo za dashboard', 'active', 'confirmed') RETURNING id"
+            ),
+            {
+                "scope": json.dumps(
+                    {
+                        "kind": "entity",
+                        "entity_type": "customer",
+                        "entity_id": customer.id,
+                        "rule": "customer_decline",
+                    }
+                )
+            },
+        ).scalar()
+        signal_id = session.execute(
+            text(
+                "INSERT INTO app.signal "
+                "(rule, customer_id, evidence, confidence, conf_band, register, status) VALUES "
+                "('customer_decline', :cid, "
+                ' CAST(\'{"metric": "turnover_60d", "ratio": "0.5"}\' AS jsonb), '
+                " 0.8, 'visoka', 'analiza', 'suppressed') RETURNING id"
+            ),
+            {"cid": customer.id},
+        ).scalar()
+        hit_ids = [
+            session.execute(
+                text(
+                    "INSERT INTO app.suppression_hit (learned_rule_id, signal_id) "
+                    "VALUES (:rid, :sid) RETURNING id"
+                ),
+                {"rid": rule_id, "sid": signal_id},
+            ).scalar()
+            for _ in range(2)
+        ]
+
+        rows = recently_suppressed_rows(session)
+        assert len(rows) == 2
+        # Newest first; every field is the SQL value, rehydrated name included.
+        assert [row.hit_id for row in rows] == sorted(hit_ids, reverse=True)
+        assert rows[0].learned_rule_id == rule_id
+        assert rows[0].rule == "customer_decline"
+        assert rows[0].customer_id == customer.id
+        assert rows[0].customer_name == customer.name
+        assert rows[0].description == "Test pravilo za dashboard"
+    finally:
+        session.close()
+        if transaction.is_active:
+            transaction.rollback()
+        connection.close()

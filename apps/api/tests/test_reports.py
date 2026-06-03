@@ -183,7 +183,7 @@ def test_report_aggregates_match_sql(reported_db) -> None:
 
 
 def test_report_sections_register_tagged(reported_db) -> None:
-    """All 7 sections, each with its D5 register; placeholder empty; drafts carry status."""
+    """All 7 sections, each with its D5 register; honest empty states; drafts carry status."""
     engine, report_id, *_ = reported_db
     payload = _payload(engine, report_id)
 
@@ -195,10 +195,13 @@ def test_report_sections_register_tagged(reported_db) -> None:
         assert section["narrative"]
         assert section["narrative_source"] in ("llm", "template")
 
-    # Section 6 is the empty M11 placeholder.
+    # Section 6 (M11): no learned rules in this fixture → honest empty state, real shape.
     suppressed = _sections_by_key(payload)["nedavno_potisnuto"]
     assert suppressed["data"]["items"] == []
-    assert suppressed["data"]["placeholder"] is True
+    assert suppressed["data"]["total_hits"] == 0
+    assert suppressed["data"]["na_provjeri_count"] == 0
+    assert "placeholder" not in suppressed["data"]  # the M7 placeholder is gone
+    assert "Nema potisnutih signala" in suppressed["narrative"]
 
     # Section 7 items: akcija register (on the section) + an approval status each.
     drafts = _sections_by_key(payload)["prijedlozi_poruka"]
@@ -207,6 +210,90 @@ def test_report_sections_register_tagged(reported_db) -> None:
         assert item["status"] in ("draft", "pending_approval")
         assert item["message"]
         assert item["approval_id"]
+
+
+# ── 2b. the recently-suppressed section (M11) ─────────────────────────────────
+
+
+def test_recently_suppressed_section_filled(reported_db) -> None:
+    """A week with suppression hits → the section lists them; every count equals SQL."""
+    from valeri_api.reports.builder import build_weekly_report, extract_summary
+
+    engine, _, _, _, _, as_of = reported_db
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    try:
+        # Plant: an active learned rule + a suppressed signal + 3 hits in the NEXT week
+        # (a different snapshot than the module fixture's report).
+        next_week_day = as_of + datetime.timedelta(days=7)
+        customer_id = session.execute(text("SELECT id FROM core.customer LIMIT 1")).scalar()
+        rule_id = session.execute(
+            text(
+                "INSERT INTO app.learned_rule "
+                "(domain, rule_type, scope, description, status, autonomy) VALUES "
+                "('sales', 'suppress', CAST(:scope AS jsonb), "
+                " 'Test pravilo: ne prijavljuj pad za ovog kupca', 'active', 'confirmed') "
+                "RETURNING id"
+            ),
+            {
+                "scope": json.dumps(
+                    {
+                        "kind": "entity",
+                        "entity_type": "customer",
+                        "entity_id": customer_id,
+                        "rule": "customer_decline",
+                    }
+                )
+            },
+        ).scalar()
+        signal_id = session.execute(
+            text(
+                "INSERT INTO app.signal "
+                "(rule, customer_id, evidence, confidence, conf_band, register, status) VALUES "
+                "('customer_decline', :cid, "
+                ' CAST(\'{"metric": "turnover_60d", "ratio": "0.5"}\' AS jsonb), '
+                " 0.8, 'visoka', 'analiza', 'suppressed') RETURNING id"
+            ),
+            {"cid": customer_id},
+        ).scalar()
+        for _ in range(3):
+            session.execute(
+                text(
+                    "INSERT INTO app.suppression_hit (learned_rule_id, signal_id, suppressed_at) "
+                    "VALUES (:rid, :sid, :at)"
+                ),
+                {"rid": rule_id, "sid": signal_id, "at": next_week_day},
+            )
+
+        report = build_weekly_report(session, week_end=next_week_day, client=AutoFakeLLMClient())
+        suppressed = next(s for s in report.payload["sections"] if s["key"] == "nedavno_potisnuto")
+
+        # Counts equal SQL (principle 1).
+        sql_hits = session.execute(
+            text(
+                "SELECT COUNT(*) FROM app.suppression_hit "
+                "WHERE suppressed_at >= :ws AND suppressed_at < CAST(:we AS date) + 1"
+            ),
+            {"ws": report.week_start, "we": report.week_end},
+        ).scalar()
+        assert suppressed["data"]["total_hits"] == sql_hits == 3
+        assert len(suppressed["data"]["items"]) == 1
+        item = suppressed["data"]["items"][0]
+        assert item["learned_rule_id"] == rule_id
+        assert item["hits"] == 3
+        # The narrative carries the SQL counts (template — no LLM spent on counting).
+        assert "3" in suppressed["narrative"]
+        assert suppressed["narrative_source"] == "template"
+
+        # The section now contributes a summary bullet (it is no longer a placeholder).
+        summary = extract_summary(report)
+        assert any("potisnuo" in bullet.text for bullet in summary.bullets)
+    finally:
+        session.close()
+        if transaction.is_active:
+            transaction.rollback()
+        connection.close()
 
 
 # ── 3. narrative numbers come from SQL ────────────────────────────────────────

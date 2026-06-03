@@ -5,6 +5,7 @@ this module only loads thresholds, packages rows, and writes app.signal.
 """
 
 import datetime
+import json
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -90,14 +91,23 @@ def load_active_suppressions(session: Session) -> list[dict[str, Any]]:
     return [{"id": row.id, "scope": row.scope} for row in rows]
 
 
-def find_suppression(draft: SignalDraft, suppressions: list[dict[str, Any]]) -> int | None:
+def find_suppression(
+    draft: SignalDraft,
+    suppressions: list[dict[str, Any]],
+    customer_segments: dict[int, str | None] | None = None,
+) -> int | None:
     """Return the learned_rule id that suppresses this draft, or None.
 
     Supported scope shapes (docs/data-model.md):
       {"kind": "entity", "entity_type": "customer"|"article", "entity_id": N, "rule": "..."?}
-      {"kind": "category", "category": "...", "rule": "..."?}   (matched via evidence)
+      {"kind": "category", "category": "...", "rule": "..."?}
       {"kind": "once", "rule": "...", "customer_id": N?, "article_id": N?}
     A scope without "rule" applies to every rule.
+
+    A category scope means "this whole group" — it matches the draft's evidence
+    category (product categories, e.g. lost_category) OR the customer's segment
+    (segment scopes, e.g. "kafić"); `customer_segments` is the id→segment map
+    insert_signals loads for the drafts being processed (M11 fix).
     """
     for suppression in suppressions:
         scope = suppression["scope"]
@@ -114,8 +124,13 @@ def find_suppression(draft: SignalDraft, suppressions: list[dict[str, Any]]) -> 
             if entity_type == "article" and draft.article_id == entity_id:
                 return suppression["id"]
         elif kind == "category":
+            scoped_category = scope.get("category")
             evidence_category = draft.evidence.get("category_name") or draft.evidence.get("segment")
-            if evidence_category == scope.get("category"):
+            customer_segment = (customer_segments or {}).get(draft.customer_id)
+            if scoped_category is not None and scoped_category in (
+                evidence_category,
+                customer_segment,
+            ):
                 return suppression["id"]
         elif kind == "once":
             if scope.get("customer_id") == draft.customer_id and (
@@ -123,6 +138,18 @@ def find_suppression(draft: SignalDraft, suppressions: list[dict[str, Any]]) -> 
             ):
                 return suppression["id"]
     return None
+
+
+def load_customer_segments(session: Session, drafts: list[SignalDraft]) -> dict[int, str | None]:
+    """The id→segment map for the drafts' customers (one query; category-scope matching)."""
+    customer_ids = sorted({d.customer_id for d in drafts if d.customer_id is not None})
+    if not customer_ids:
+        return {}
+    rows = session.execute(
+        text("SELECT id, segment FROM core.customer WHERE id = ANY(:ids)"),
+        {"ids": customer_ids},
+    ).all()
+    return {row.id: row.segment for row in rows}
 
 
 # ── dedup + insert ────────────────────────────────────────────────────────────
@@ -183,6 +210,8 @@ def insert_signals(
     suppressions = suppressions if suppressions is not None else load_active_suppressions(session)
     existing_keys = existing_keys if existing_keys is not None else open_signal_keys(session)
     suppressed_keys = suppressed_signal_keys(session)
+    # Customer segments are only needed when category scopes could match (M11 fix).
+    customer_segments = load_customer_segments(session, drafts) if suppressions else {}
 
     outcome = InsertOutcome()
     rows: list[dict[str, Any]] = []
@@ -192,7 +221,7 @@ def insert_signals(
             outcome.deduplicated += 1
             continue
 
-        suppressing_rule_id = find_suppression(draft, suppressions)
+        suppressing_rule_id = find_suppression(draft, suppressions, customer_segments)
         if suppressing_rule_id is not None:
             outcome.suppressed += 1
             existing_suppressed_id = suppressed_keys.get(draft.dedup_key())
@@ -212,6 +241,22 @@ def insert_signals(
                 session.flush()
                 existing_suppressed_id = suppressed_signal.id
                 suppressed_keys[draft.dedup_key()] = existing_suppressed_id
+            else:
+                # M11: refresh the stored evidence to the CURRENT detection — the
+                # over-suppression auditor compares this against the rule's source
+                # signal (the state the owner dismissed) to detect drift.
+                session.execute(
+                    text(
+                        "UPDATE app.signal SET evidence = CAST(:evidence AS jsonb), "
+                        "confidence = :confidence, conf_band = :band WHERE id = :id"
+                    ),
+                    {
+                        "evidence": json.dumps(jsonable(draft.evidence)),
+                        "confidence": draft.confidence,
+                        "band": conf_band(session, draft.confidence),
+                        "id": existing_suppressed_id,
+                    },
+                )
 
             # APPEND-ONLY: one hit per suppression event (incl. recurrences).
             session.add(

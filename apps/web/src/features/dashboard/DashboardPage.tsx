@@ -198,6 +198,30 @@ export function DashboardPage() {
                 ))}
               </div>
             )}
+
+            {/* M11: what learned rules recently hid — quiet transparency, never silent */}
+            {data && data.recently_suppressed.length > 0 && (
+              <div
+                className="flex flex-col gap-1 border-t pt-3"
+                data-testid="recently-suppressed"
+              >
+                <span className="text-[11.5px] font-medium uppercase text-text-3">
+                  {t.dashboard.recently_suppressed.title}
+                </span>
+                {data.recently_suppressed.slice(0, 5).map((row) => (
+                  <span key={row.hit_id} className="truncate text-xs text-text-3">
+                    {row.customer_name ? `${row.customer_name} · ` : ""}
+                    {row.description}
+                  </span>
+                ))}
+                <Link
+                  to="/ai-report"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {t.dashboard.recently_suppressed.view_rules}
+                </Link>
+              </div>
+            )}
           </SectionCard>
         </div>
       </div>

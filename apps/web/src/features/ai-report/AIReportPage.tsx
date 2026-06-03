@@ -1,6 +1,6 @@
 /**
  * AI Report (frontend-spec §5): Sedmični izvještaj (live, M7 data) +
- * "Šta je VALERI naučio" (M10 placeholder) + Istrage (M13 placeholder).
+ * "Šta je VALERI naučio" (live, M11) + Istrage (M13 placeholder).
  */
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,6 +11,8 @@ import { useWeeklyReport } from "@/lib/api/queries"
 import { ApiRequestError } from "@/lib/api/client"
 import { formatDate } from "@/lib/format"
 import { useT } from "@/lib/i18n"
+
+import { LearnedTab } from "./LearnedTab"
 
 function WeeklyReportTab() {
   const t = useT()
@@ -70,12 +72,12 @@ export function AIReportPage() {
           <WeeklyReportTab />
         </TabsContent>
 
-        {/* Honest milestone placeholders — never fake data (ui-design §2). */}
+        {/* M11: the learning loop, transparent — rules + the decision feed. */}
         <TabsContent value="learned">
-          <Card className="p-5">
-            <EmptyState message={t.ai_report.learned_m10} />
-          </Card>
+          <LearnedTab />
         </TabsContent>
+
+        {/* Honest milestone placeholder — never fake data (ui-design §2). */}
         <TabsContent value="investigations">
           <Card className="p-5">
             <EmptyState message={t.ai_report.investigations_m13} />

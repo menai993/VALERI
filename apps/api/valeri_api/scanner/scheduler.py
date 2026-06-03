@@ -27,17 +27,21 @@ def run_weekly_cycle(
     as_of: datetime.date | None = None,
     client: LLMClient | None = None,
 ) -> tuple[ScanResult, OwnerReport]:
-    """The full weekly pipeline: scan → tasks → weekly owner report.
+    """The full weekly pipeline: scan → tasks → weekly owner report → suppression audit.
 
     Everything here is an internal action and runs without approval; the
     customer-facing drafts the report generates are approval-gated rows.
-    `client` is forwarded to report/draft narration (tests inject a fake).
+    `client` is forwarded to report/draft/audit narration (tests inject a fake).
     """
     from valeri_api.reports.builder import build_weekly_report
+    from valeri_api.selfconfig.auditor import audit_suppressions
 
     reference = as_of or datetime.date.today()
     scan_result = run_scan(session, as_of=as_of)
     report = build_weekly_report(session, week_end=reference, client=client)
+    # M11: the over-suppression audit closes the cycle — suppressed streams are
+    # re-examined every week, never forgotten.
+    audit_suppressions(session, client=client)
     return scan_result, report
 
 
@@ -82,12 +86,37 @@ def weekly_job() -> None:
     )
 
 
+def audit_job() -> None:
+    """The standalone over-suppression audit (M11) — its own session/transaction.
+
+    The weekly cycle already audits; this job exists so the audit can also run
+    independently of the report pipeline. Dedup makes a re-run a no-op.
+    """
+    from valeri_api.selfconfig.auditor import audit_suppressions
+
+    engine = get_engine()
+    with Session(engine) as session:
+        try:
+            result = audit_suppressions(session)
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.exception("over-suppression audit failed (rolled back)")
+            return
+    logger.info(
+        "over-suppression audit done: %d checked, %d flagged, %d expired",
+        result.rules_checked,
+        len(result.flagged),
+        len(result.expired_rule_ids),
+    )
+
+
 def create_scheduler(
     daily_hour: int = 6,
     weekly_day_of_week: str = "sun",
     weekly_hour: int = 2,
 ) -> BlockingScheduler:
-    """The worker's scheduler: a light daily scan + the weekly full cycle."""
+    """The worker's scheduler: a light daily scan + the weekly full cycle + the audit."""
     scheduler = BlockingScheduler(timezone=TIMEZONE)
     scheduler.add_job(
         scan_job,
@@ -100,5 +129,13 @@ def create_scheduler(
         CronTrigger(day_of_week=weekly_day_of_week, hour=weekly_hour, minute=0, timezone=TIMEZONE),
         id="weekly_scan",
         name="VALERI weekly cycle (scan + tasks + owner report)",
+    )
+    scheduler.add_job(
+        audit_job,
+        CronTrigger(
+            day_of_week=weekly_day_of_week, hour=weekly_hour + 1, minute=0, timezone=TIMEZONE
+        ),
+        id="over_suppression_audit",
+        name="VALERI over-suppression audit (Na provjeri)",
     )
     return scheduler

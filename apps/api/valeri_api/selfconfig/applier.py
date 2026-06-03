@@ -114,14 +114,9 @@ def _apply_threshold_change(session: Session, scope: dict) -> object:
 # ── undo ──────────────────────────────────────────────────────────────────────
 
 
-def undo_rule(session: Session, rule_id: int, user: AppUser) -> ApplyResponse:
-    """Revert a rule: status='reverted' + a NEW undo decision (append-only, never deletes)."""
-    rule = _get_rule(session, rule_id)
-    if rule.status not in ("active", "pending_confirm"):
-        raise InvalidRuleState(f"Pravilo {rule_id} je već u statusu {rule.status!r}")
-
-    # Find the decision that applied this rule (None when it was never applied).
-    original_decision_id = session.execute(
+def find_apply_decision_id(session: Session, rule_id: int) -> int | None:
+    """The decision that applied this rule (None when it was never applied)."""
+    return session.execute(
         text(
             "SELECT id FROM app.decision "
             "WHERE kind IN ('suppression', 'threshold_change') "
@@ -131,6 +126,41 @@ def undo_rule(session: Session, rule_id: int, user: AppUser) -> ApplyResponse:
         {"rule_id": rule_id},
     ).scalar()
 
+
+def restore_threshold_value(session: Session, scope: dict, apply_decision_id: int) -> object | None:
+    """Restore the rule_config value a threshold rule changed (recorded at apply time).
+
+    Shared by Undo (M10) and expiry (M11). Returns the restored value, or None when
+    there was nothing to restore.
+    """
+    old_value = session.execute(
+        text("SELECT payload->'old_value' FROM app.decision WHERE id = :id"),
+        {"id": apply_decision_id},
+    ).scalar()
+    if old_value is None:
+        return None
+    session.execute(
+        text(
+            "UPDATE app.rule_config SET value = CAST(:value AS jsonb), updated_at = now() "
+            "WHERE rule = :rule AND param = :param"
+        ),
+        {
+            "value": json.dumps(old_value),
+            "rule": scope.get("rule"),
+            "param": scope.get("metric"),
+        },
+    )
+    return old_value
+
+
+def undo_rule(session: Session, rule_id: int, user: AppUser) -> ApplyResponse:
+    """Revert a rule: status='reverted' + a NEW undo decision (append-only, never deletes)."""
+    rule = _get_rule(session, rule_id)
+    if rule.status not in ("active", "pending_confirm"):
+        raise InvalidRuleState(f"Pravilo {rule_id} je već u statusu {rule.status!r}")
+
+    original_decision_id = find_apply_decision_id(session, rule_id)
+
     payload = {
         "learned_rule_id": rule.id,
         "reverted_decision_id": original_decision_id,
@@ -139,23 +169,9 @@ def undo_rule(session: Session, rule_id: int, user: AppUser) -> ApplyResponse:
 
     # Threshold rules: restore the old value recorded in the apply decision.
     if rule.rule_type == "threshold" and original_decision_id is not None:
-        old_value = session.execute(
-            text("SELECT payload->'old_value' FROM app.decision WHERE id = :id"),
-            {"id": original_decision_id},
-        ).scalar()
-        if old_value is not None:
-            session.execute(
-                text(
-                    "UPDATE app.rule_config SET value = CAST(:value AS jsonb), updated_at = now() "
-                    "WHERE rule = :rule AND param = :param"
-                ),
-                {
-                    "value": json.dumps(old_value),
-                    "rule": rule.scope.get("rule"),
-                    "param": rule.scope.get("metric"),
-                },
-            )
-            payload["restored_value"] = old_value
+        restored = restore_threshold_value(session, rule.scope, original_decision_id)
+        if restored is not None:
+            payload["restored_value"] = restored
 
     rule.status = "reverted"
     decision = log_decision(
@@ -179,6 +195,12 @@ def edit_scope(session: Session, rule_id: int, new_scope: dict, user: AppUser) -
     rule = _get_rule(session, rule_id)
     if rule.status not in ("active", "pending_confirm"):
         raise InvalidRuleState(f"Pravilo {rule_id} je u statusu {rule.status!r}")
+    # M11 guard: a threshold rule's scope IS its config change — editing it would not
+    # re-apply the value. Undo and re-learn instead of editing in place.
+    if rule.rule_type == "threshold":
+        raise InvalidRuleState(
+            "Opseg threshold pravila se ne može mijenjati — poništite pravilo i napravite novo"
+        )
 
     old_scope = dict(rule.scope)
     rule.scope = new_scope
@@ -191,6 +213,89 @@ def edit_scope(session: Session, rule_id: int, new_scope: dict, user: AppUser) -
             "learned_rule_id": rule.id,
             "old_scope": old_scope,
             "new_scope": new_scope,
+            "initiated_by_user_id": user.id,
+        },
+        reversible=True,
+    )
+    session.flush()
+    return ApplyResponse(learned_rule=_rule_read(session, rule), decision=_decision_read(decision))
+
+
+# ── Na provjeri: flag lookup + keep (M11) ─────────────────────────────────────
+
+
+def find_open_flag(session: Session, rule_id: int) -> dict | None:
+    """The latest Na provjeri flag for a rule + how (if at all) it was resolved.
+
+    Returns None when the rule was never flagged, else:
+    {"flag_id", "flag_payload", "resolution": None | {"kind", "payload"}}.
+    A later keep (approval) or undo decision resolves a flag.
+    """
+    flag = (
+        session.execute(
+            text(
+                "SELECT id, payload FROM app.decision "
+                "WHERE kind = 'reactivation' AND (payload->>'review')::boolean "
+                "AND (payload->>'learned_rule_id')::bigint = :rule_id "
+                "ORDER BY id DESC LIMIT 1"
+            ),
+            {"rule_id": rule_id},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if flag is None:
+        return None
+
+    resolution = (
+        session.execute(
+            text(
+                "SELECT kind, payload FROM app.decision "
+                "WHERE kind IN ('approval', 'undo') "
+                "AND (payload->>'learned_rule_id')::bigint = :rule_id "
+                "AND id > :flag_id ORDER BY id DESC LIMIT 1"
+            ),
+            {"rule_id": rule_id, "flag_id": flag["id"]},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    return {
+        "flag_id": flag["id"],
+        "flag_payload": flag["payload"] or {},
+        "resolution": dict(resolution) if resolution is not None else None,
+    }
+
+
+def keep_rule(session: Session, rule_id: int, user: AppUser) -> ApplyResponse:
+    """Zadrži: the owner resolves a Na provjeri flag by explicitly keeping the rule.
+
+    Writes an approval decision recording the drift state that was accepted — the
+    auditor will only re-flag if drift worsens materially beyond this point.
+    """
+    rule = _get_rule(session, rule_id)
+    if rule.status != "active":
+        raise InvalidRuleState(
+            f"Pravilo {rule_id} je u statusu {rule.status!r} — "
+            "samo aktivna pravila se mogu zadržati"
+        )
+
+    flag_state = find_open_flag(session, rule_id)
+    if flag_state is None or flag_state["resolution"] is not None:
+        raise InvalidRuleState(f"Pravilo {rule_id} nema otvorenu provjeru — nema šta da se zadrži")
+
+    flag_payload = flag_state["flag_payload"]
+    decision = log_decision(
+        session,
+        kind="approval",
+        actor="user",
+        summary=f"Pravilo zadržano nakon provjere: {rule.description}",
+        payload={
+            "learned_rule_id": rule.id,
+            "resolves_decision_id": flag_state["flag_id"],
+            # The accepted drift state — the auditor's re-flag baseline:
+            "drift_factor_at_keep": flag_payload.get("drift_factor"),
+            "actual_hits_at_keep": flag_payload.get("actual_hits"),
             "initiated_by_user_id": user.id,
         },
         reversible=True,

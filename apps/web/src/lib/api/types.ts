@@ -110,6 +110,17 @@ export interface OwnerReportSummary {
   bullets: SummaryBullet[]
 }
 
+/** M11: one recently-hidden detection on the dashboard. */
+export interface RecentlySuppressedRow {
+  hit_id: number
+  learned_rule_id: number
+  description: string
+  rule: string | null
+  customer_id: number | null
+  customer_name: string | null
+  suppressed_at: string
+}
+
 export interface DashboardResponse {
   as_of: string
   range_days: number
@@ -120,7 +131,7 @@ export interface DashboardResponse {
   lost_articles: LostArticleRow[]
   rep_activity: null
   owner_report_summary: OwnerReportSummary | null
-  recently_suppressed: unknown[]
+  recently_suppressed: RecentlySuppressedRow[]
 }
 
 // ── customers ─────────────────────────────────────────────────────────────────
@@ -289,6 +300,31 @@ export interface LearnedRule {
   created_at: string
   expires_at: string | null
   suppression_count: number
+  // M11 — origin (rehydrated names) + the open Na provjeri flag:
+  source_customer_name: string | null
+  created_by_name: string | null
+  na_provjeri: boolean
+}
+
+/** M11: one suppression hit joined to its suppressed signal — "what it hid". */
+export interface SuppressionHitDetail {
+  id: number
+  learned_rule_id: number
+  signal_id: number | null
+  suppressed_at: string
+  rule: string | null
+  customer_id: number | null
+  customer_name: string | null
+  evidence: Record<string, unknown> | null
+  confidence: number | null
+  conf_band: ConfBand | null
+}
+
+/** GET /learned-rules/{id} response. */
+export interface LearnedRuleDetail {
+  rule: LearnedRule
+  hits: SuppressionHitDetail[]
+  decisions: Decision[]
 }
 
 export interface Decision {

@@ -82,15 +82,24 @@ def handle_message(
 
     # ── 3. intent classification (Tier-1, masked) ─────────────────────────────
     classification = classify_intent(
-        session, masked_text, masked_history=masked_history, client=client
+        session, masked_text, masked_history=masked_history, client=client, user_role=user.role
     )
 
     # feedback_config / investigation route to their default tools when the model
     # didn't already pick one.
     tool_name = classification.tool or _INTENT_DEFAULT_TOOL.get(classification.intent)
 
-    # ── 4. help / no tool → data-aware assistant reply (read-only, no mutation) ──
-    if classification.intent == "help" or tool_name is None:
+    # Honesty gate (CSA): never dispatch query_metric with a metric the registry
+    # doesn't have — that is how the router used to force-fit a wrong answer. Treat
+    # an unregistered/missing metric as "no capability fits" and answer honestly.
+    if tool_name == "query_metric" and not _is_known_metric(classification.params.get("metric")):
+        tool_name = None
+
+    # ── 4. no fitting tool → data-aware assistant reply (read-only, no mutation) ──
+    # A validly-chosen tool is dispatched even when the model tagged the intent
+    # "help" (e.g. "šta sve možeš?" → describe_capabilities); only a genuinely
+    # empty tool falls through to the assistant.
+    if tool_name is None:
         text, register, _ = narrate_assistant(session, user, context, client=client)
         return _finish(
             session,
@@ -163,6 +172,15 @@ def handle_message(
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def _is_known_metric(metric: Any) -> bool:
+    """True iff `metric` is a registered semantic-layer metric (honesty gate)."""
+    if not metric:
+        return False
+    from valeri_api.semantic.registry import load_registry
+
+    return metric in load_registry()
 
 
 def _masked_history(

@@ -24,6 +24,7 @@ ROUTABLE_TOOLS = (
     "create_task_draft",
     "propose_rule_change",
     "start_investigation",
+    "describe_capabilities",
 )
 
 
@@ -42,6 +43,7 @@ class IntentClassification(BaseModel):
             "create_task_draft",
             "propose_rule_change",
             "start_investigation",
+            "describe_capabilities",
         ]
         | None
     ) = None

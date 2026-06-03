@@ -50,6 +50,36 @@ def test_contract_numbers_equal_sql(owner_context) -> None:
     assert Decimal(str(result.output["value"])) == sql_value
 
 
+def test_contract_top_articles_equals_sql(owner_context) -> None:
+    """top_articles ranks by revenue and every revenue equals direct SQL; limit honoured."""
+    session = owner_context.session
+    today = datetime.date.today()
+    from_date = today - datetime.timedelta(days=365)
+
+    result = dispatch(
+        owner_context,
+        "query_metric",
+        {"metric": "top_articles", "from_date": str(from_date), "to_date": str(today), "limit": 5},
+    )
+    assert result.ok, result.error
+    rows = result.output["rows"]
+    assert 0 < len(rows) <= 5  # limit honoured
+
+    revenues = [Decimal(str(r["revenue"])) for r in rows]
+    assert revenues == sorted(revenues, reverse=True), "not ranked by revenue desc"
+
+    for row in rows:
+        sql_value = session.execute(
+            text(
+                "SELECT COALESCE(SUM(l.line_total), 0) FROM core.invoice_line l "
+                "JOIN core.invoice i ON i.id = l.invoice_id "
+                "WHERE l.article_id = :aid AND i.date > :a AND i.date <= :b"
+            ),
+            {"aid": row["article_id"], "a": from_date, "b": today},
+        ).scalar()
+        assert Decimal(str(row["revenue"])) == sql_value
+
+
 def test_rbac_rep_blocked_from_company_wide(rep_context) -> None:
     """A rep cannot run company-wide metrics (finance data, D2); own-customer metrics pass."""
     session = rep_context.session

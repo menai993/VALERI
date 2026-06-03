@@ -27,6 +27,7 @@ class QueryMetricInput(BaseModel):
     segment: str | None = None
     from_date: datetime.date | None = None
     to_date: datetime.date | None = None
+    limit: int | None = None
 
 
 class QueryMetricOutput(BaseModel):
@@ -55,6 +56,7 @@ def _run(tool_input: QueryMetricInput, context: ToolContext) -> QueryMetricOutpu
         "segment": tool_input.segment,
         "from_date": tool_input.from_date,
         "to_date": tool_input.to_date,
+        "limit": tool_input.limit,
     }
     params = {
         key: value for key, value in candidates.items() if key in declared and value is not None
@@ -88,8 +90,9 @@ QUERY_METRIC = ToolDefinition(
     name="query_metric",
     description=(
         "Vraća jednu registrovanu metriku (promet, promet po mjesecima, promet kupca u 60 dana, "
-        "osnovica kupca, zadnja narudžba, prosječni razmak narudžbi). Parametri: metric, "
-        "customer_id?, from_date?, to_date?, segment?"
+        "osnovica kupca, zadnja narudžba, prosječni razmak narudžbi, najprodavaniji artikli, "
+        "promet po kategorijama, najveći kupci, spisak artikala). Parametri: metric, "
+        "customer_id?, from_date?, to_date?, segment?, category_id?, limit?"
     ),
     input_schema=QueryMetricInput,
     output_schema=QueryMetricOutput,

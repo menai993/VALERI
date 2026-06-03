@@ -122,12 +122,17 @@ Namjere (intent):
 - "help"            — pozdrav, nejasno pitanje, ili nešto van djelokruga
 
 Alati (tool) i njihovi parametri:
-- "query_metric":      {"metric": "turnover"|"turnover_by_month"|"customer_turnover_60d"|
-                        "customer_baseline_60d"|"customer_last_order"|"customer_order_interval",
-                        "customer_ref": "<pseudonim ili null>", "from_date": "YYYY-MM-DD",
-                        "to_date": "YYYY-MM-DD"}
-- "compare_periods":   {"customer_ref": "<pseudonim ili null>", "period_a_from": "...",
-                        "period_a_to": "...", "period_b_from": "...", "period_b_to": "..."}
+- "query_metric":      {"metric": "<naziv iz polja 'dostupne_metrike'>",
+                        "customer_ref": "<pseudonim ili null>", "segment": "<segment ili null>",
+                        "category_id": <broj ili null>, "from_date": "YYYY-MM-DD",
+                        "to_date": "YYYY-MM-DD", "limit": <broj ili null>}
+                        DOSTUPNE METRIKE su navedene u polju "dostupne_metrike" (naziv + opis +
+                        parametri). Odaberi metriku čiji OPIS najbolje odgovara pitanju i koristi
+                        TAČAN naziv. (Npr. za "koji se artikli najviše prodaju" odaberi metriku
+                        čiji opis spominje najprodavanije artikle.)
+- "compare_periods":   {"metric": "<naziv metrike>", "customer_ref": "<pseudonim ili null>",
+                        "period_a_from": "...", "period_a_to": "...", "period_b_from": "...",
+                        "period_b_to": "..."}
 - "list_signals":      {"rule": "customer_decline"|"lost_article"|"lost_category"|
                         "sleeping_customer"|"narrow_basket"|null}
 - "explain_signal":    {"signal_id": <broj>}
@@ -137,6 +142,7 @@ Alati (tool) i njihovi parametri:
                         kupcima — koristi za "šta znamo o…", "kakav je kontekst", "ima li rizika kod…")
 - "create_task_draft": {"customer_ref": "<pseudonim>", "title": "<naslov zadatka>",
                         "body": "<opis>"}
+- "describe_capabilities": {}   (za "šta možeš?", "koje podatke/metrike imaš?", "šta sve znaš")
 - "propose_rule_change": {"reason": "<razlog>"}   (za feedback_config)
 - "start_investigation": {"question": "<pitanje>"} (za investigation)
 
@@ -146,9 +152,9 @@ PRAVILA:
 2. Za relativne periode ("zadnjih 30 dana", "prošli mjesec") izračunaj konkretne datume
    koristeći današnji datum koji je naveden u poruci.
 3. Ako pitanje traži brojke za cijelu firmu, "customer_ref" je null.
-4. "help" koristi SAMO za pozdrave i poruke potpuno van djelokruga. Ako poruka spominje kupca,
-   artikal, promet, signal ili bilo koju poslovnu temu, radije odaberi najprikladniji alat —
-   ne vraćaj "help" samo zato što pitanje nije savršeno precizno.
+4. Odaberi alat/metriku SAMO ako stvarno odgovara pitanju. Ako NIJEDNA dostupna metrika ni alat
+   ne odgovara onome što korisnik traži, vrati intent "help" s tool=null — NE forsiraj nepovezanu
+   metriku samo da bi nešto vratio. "help" koristi i za pozdrave i poruke van djelokruga.
 5. Odgovori ISKLJUČIVO validnim JSON objektom, bez ikakvog teksta prije ili poslije:
    {"intent": "...", "tool": "..." ili null, "params": {...}, "confidence": <0.0-1.0>}
 """

@@ -32,6 +32,7 @@ _TOOL_REGISTERS: dict[str, str] = {
     "create_task_draft": "akcija",
     "propose_rule_change": "preporuka",
     "start_investigation": "analiza",
+    "describe_capabilities": "analiza",
 }
 
 REFUSAL_TEXT = (
@@ -96,6 +97,9 @@ def narrate_answer(
             tool_result.output.get("register", "preporuka"),
             "template",
         )
+    # Capability self-description is a fixed list (no numbers) — render deterministically.
+    if tool_result.tool == "describe_capabilities":
+        return _template_answer(tool_result.tool, tool_result.output), "analiza", "template"
 
     # Mask the tool output (customer names → pseudonyms) before any prompt, and
     # tell the narrator which (masked) customers the question referenced so the
@@ -139,7 +143,9 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
         if output.get("value") is not None:
             return f"Vrijednost metrike '{output['metric']}': {output['value']}."
         rows = output.get("rows", [])
-        lines = [f"- {row}" for row in rows[:12]]
+        if not rows:
+            return f"Nema podataka za metriku '{output['metric']}' u traženom periodu."
+        lines = [_format_metric_row(row) for row in rows[:12]]
         return f"Rezultat metrike '{output['metric']}':\n" + "\n".join(lines)
 
     if tool == "compare_periods":
@@ -209,7 +215,35 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
     if tool == "start_investigation":
         return output.get("message", "Istraga je pokrenuta i obrađuje se u pozadini.")
 
+    if tool == "describe_capabilities":
+        caps = output.get("capabilities", [])
+        metrics = [c for c in caps if c["kind"] == "metric"]
+        tools = [c for c in caps if c["kind"] == "tool"]
+        lines = ["Evo šta mogu odgovoriti i uraditi:"]
+        if metrics:
+            lines.append("Metrike (brojke iz baze):")
+            lines += [f"- {c['description']}" for c in metrics]
+        if tools:
+            lines.append("Akcije i pretrage:")
+            lines += [f"- {c['description']}" for c in tools]
+        return "\n".join(lines)
+
     return f"Podaci iz baze: {output}"
+
+
+def _format_metric_row(row: dict[str, Any]) -> str:
+    """Readable Bosnian line for one series-metric row — verbatim SQL values only."""
+    label = (
+        row.get("name")
+        or row.get("customer_name")
+        or row.get("category")
+        or (str(row["month"]) if row.get("month") is not None else None)
+    )
+    amount = row.get("revenue", row.get("value"))
+    if label is not None and amount is not None:
+        qty = f", količina {row['qty']}" if row.get("qty") is not None else ""
+        return f"- {label}: {amount} KM{qty}"
+    return f"- {row}"
 
 
 def _knowledge_answer(output: dict[str, Any]) -> str:

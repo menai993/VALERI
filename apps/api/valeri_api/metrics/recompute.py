@@ -13,11 +13,13 @@ from sqlalchemy.orm import Session
 
 SQL_DIR = Path(__file__).resolve().parent / "sql"
 
-# (target table, sql file) in recompute order.
+# (target table, sql file) in recompute order. client_expectation runs last —
+# it reads the freshly-recomputed customer_metrics (CI2).
 _TABLES = [
     ("core.customer_metrics", "customer_metrics.sql"),
     ("core.cust_article_cadence", "cust_article_cadence.sql"),
     ("core.segment_basket", "segment_basket.sql"),
+    ("core.client_expectation", "client_expectation.sql"),
 ]
 
 

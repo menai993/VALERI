@@ -31,6 +31,7 @@ SECTION_KEYS = [
     "nedavno_potisnuto",
     "prilike_po_izvoru",  # C-CRM2
     "prihod_vs_plan",  # C-CRM2
+    "zabiljezeni_dogadjaji",  # CI2
     "prijedlozi_poruka",
 ]
 
@@ -43,6 +44,7 @@ EXPECTED_REGISTERS = {
     "nedavno_potisnuto": "analiza",
     "prilike_po_izvoru": "analiza",  # C-CRM2
     "prihod_vs_plan": "analiza",  # C-CRM2
+    "zabiljezeni_dogadjaji": "analiza",  # CI2
     "prijedlozi_poruka": "akcija",
 }
 
@@ -262,6 +264,54 @@ def test_opportunity_source_and_revenue_plan_sections(reported_db) -> None:
             {"d": week_end},
         ).scalar()
     assert Decimal(plan["data"]["actual_mtd"]) == actual
+
+
+@pytest.mark.anyio
+async def test_captured_events_section_counts(db_session: Session) -> None:
+    """CI2: captured commercial events appear in the report; counts/value == SQL."""
+    from valeri_api.reports.builder import build_weekly_report
+
+    week_start, week_end = datetime.date(2024, 12, 30), datetime.date(2025, 1, 5)
+    occurred = datetime.date(2025, 1, 2)  # within that week
+
+    le = db_session.execute(
+        text("INSERT INTO core.legal_entity (name) VALUES ('CI2 Izvj d.o.o.') RETURNING id")
+    ).scalar_one()
+    cid = db_session.execute(
+        text(
+            "INSERT INTO core.customer (legal_entity_id, name, segment) "
+            "VALUES (:le, 'Hotel Ugovor CI2', 'hotel') RETURNING id"
+        ),
+        {"le": le},
+    ).scalar_one()
+    db_session.execute(
+        text(
+            "INSERT INTO app.commercial_event "
+            "(customer_id, kind, summary, value, source, confidence, conf_band, status, "
+            " occurred_on, evidence_text) "
+            "VALUES (:cid, 'deal', 'Godišnji ugovor CI2', 60000, 'stated', 0.9, 'visoka', "
+            "'active', :occ, 'zaključili ugovor')"
+        ),
+        {"cid": cid, "occ": occurred},
+    )
+    db_session.flush()
+
+    report = build_weekly_report(db_session, week_end=week_end)
+    section = {s["key"]: s for s in report.payload["sections"]}["zabiljezeni_dogadjaji"]
+    assert section["register"] == "analiza"
+
+    row = db_session.execute(
+        text(
+            "SELECT COUNT(*) AS n, "
+            "COALESCE(SUM(value) FILTER (WHERE kind='deal'), 0)::numeric(14,2) AS dv "
+            "FROM app.commercial_event WHERE status='active' "
+            "AND occurred_on BETWEEN :ws AND :we"
+        ),
+        {"ws": week_start, "we": week_end},
+    ).one()
+    assert section["data"]["stats"]["n_events"] == row.n
+    assert Decimal(str(section["data"]["stats"]["deal_value"])) == row.dv
+    assert any(it["summary"] == "Godišnji ugovor CI2" for it in section["data"]["items"])
 
 
 # ── 2b. the recently-suppressed section (M11) ─────────────────────────────────

@@ -58,6 +58,7 @@ READ_ONLY_TOOLS = (
     "list_signals",
     "explain_signal",
     "get_customer_360",
+    "get_client_knowledge",
 )
 # Mutations the model may only PROPOSE — executed solely by execute_action after HITL approval.
 PROPOSABLE_ACTIONS = ("create_task_draft",)

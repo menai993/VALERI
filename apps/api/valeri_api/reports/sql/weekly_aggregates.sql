@@ -174,3 +174,29 @@ SELECT COUNT(*)                                       AS total_count,
        COALESCE(AVG(o.value), 0)::numeric(14,2)       AS avg_value
 FROM app.opportunity o
 WHERE o.value IS NOT NULL
+
+-- name: captured_events
+-- CI2: commercial events captured into the KB whose occurrence falls in the week.
+-- Numbers (the stated value) are stored data tagged source='stated'; never LLM-computed.
+SELECT e.id,
+       e.kind,
+       e.summary,
+       e.value,
+       e.customer_id,
+       c.name AS customer_name,
+       c.segment,
+       e.occurred_on
+FROM app.commercial_event e
+LEFT JOIN core.customer c ON c.id = e.customer_id
+WHERE e.status = 'active'
+  AND e.occurred_on BETWEEN :week_start AND :week_end
+ORDER BY e.value DESC NULLS LAST, e.id DESC
+LIMIT :top_n
+
+-- name: captured_event_stats
+SELECT COUNT(*)                                                       AS n_events,
+       COALESCE(SUM(e.value) FILTER (WHERE e.kind = 'deal'), 0)::numeric(14,2) AS deal_value,
+       COUNT(DISTINCT e.customer_id)                                  AS n_customers
+FROM app.commercial_event e
+WHERE e.status = 'active'
+  AND e.occurred_on BETWEEN :week_start AND :week_end

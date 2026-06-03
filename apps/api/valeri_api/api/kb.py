@@ -16,6 +16,7 @@ from valeri_api.auth.deps import CurrentUser, require_roles, visible_customer_id
 from valeri_api.auth.models import AppUser
 from valeri_api.db import get_session
 from valeri_api.kb import service
+from valeri_api.kb.graph import graph_for_customer
 from valeri_api.kb.models import Clarification, ClientFact, CommercialEvent
 from valeri_api.kb.pipeline import run_capture
 from valeri_api.kb.schemas import (
@@ -177,6 +178,25 @@ def customer_knowledge(
     """The 'Šta VALERI zna' panel: profile + active facts + events + relationships."""
     _assert_customer_visible(user, session, customer_id)
     return service.knowledge_for_customer(session, customer_id)
+
+
+@router.get("/kb/graph")
+def kb_graph(
+    customer_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    user: CurrentUser,
+    depth: int = 1,
+) -> dict:
+    """The relationship map (CI2): confirmed nodes + edges around a customer.
+
+    A rep's graph omits members outside their scope (fail-closed, D7)."""
+    _assert_customer_visible(user, session, customer_id)
+    graph = graph_for_customer(session, customer_id, depth=depth)
+    scope = visible_customer_ids(user, session)
+    if scope is not None:
+        graph["nodes"] = [n for n in graph["nodes"] if n["customer_id"] in scope]
+        graph["edges"] = [e for e in graph["edges"] if e["from"] in scope and e["to"] in scope]
+    return graph
 
 
 def _guard_item_scope(user: AppUser, session: Session, item_type: str, item_id: int) -> None:

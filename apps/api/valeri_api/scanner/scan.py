@@ -13,10 +13,13 @@ from sqlalchemy.orm import Session
 
 from valeri_api.metrics.recompute import recompute_all
 from valeri_api.rules import (
+    behavioral_twin,
     customer_decline,
+    group_risk,
     lost_article,
     lost_category,
     narrow_basket,
+    referral_risk,
     sleeping_customer,
 )
 from valeri_api.rules.engine import (
@@ -34,6 +37,10 @@ ALL_RULES: list[ModuleType] = [
     lost_category,
     sleeping_customer,
     narrow_basket,
+    # CI2 graph-aware rules — no-op until confirmed relationships + expectations exist.
+    group_risk,
+    behavioral_twin,
+    referral_risk,
 ]
 
 

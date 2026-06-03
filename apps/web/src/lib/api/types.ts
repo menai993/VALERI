@@ -388,6 +388,59 @@ export interface ApplyResponse {
   register: "akcija"
 }
 
+// ── investigations (M13) ──────────────────────────────────────────────────────
+
+export type InvestigationStatus = "queued" | "running" | "needs_input" | "done" | "failed"
+
+export interface Investigation {
+  id: number
+  trigger: string
+  question: string
+  status: InvestigationStatus
+  model_tier: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_by: number | null
+  signal_id: number | null
+  created_at: string
+}
+
+export interface InvestigationFinding {
+  text: string
+  confidence: number
+  register: Register
+}
+
+/** The stored report (narrative + findings + next step), all Bosnian, numbers from SQL. */
+export interface InvestigationReportData {
+  narrative: string
+  findings: InvestigationFinding[]
+  confidence: number
+  next_step: string
+  next_step_register: Register
+  register: Register
+  narrative_source: "llm" | "template"
+  budget_exhausted?: string
+  trace_ref?: string
+}
+
+export interface InvestigationStep {
+  id: number
+  step_no: number
+  node: string | null
+  tool: string | null
+  input: Record<string, unknown> | null
+  output: Record<string, unknown> | null
+  at: string
+}
+
+export interface InvestigationDetail {
+  investigation: Investigation
+  report: InvestigationReportData | null
+  steps: InvestigationStep[]
+  pending_actions: Record<string, unknown>[]
+}
+
 // ── generic list shapes ───────────────────────────────────────────────────────
 
 export interface Paginated<T> {

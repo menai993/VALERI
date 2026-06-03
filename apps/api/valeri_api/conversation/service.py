@@ -30,7 +30,7 @@ logger = logging.getLogger("valeri.conversation.service")
 # How many previous messages give the intent router conversational context.
 HISTORY_WINDOW = 6
 
-# Intents that the stub tools serve until their milestone lands.
+# Default tool per intent when the model didn't pick one explicitly.
 _INTENT_DEFAULT_TOOL = {
     "feedback_config": "propose_rule_change",
     "investigation": "start_investigation",
@@ -67,7 +67,7 @@ def handle_message(
         session, masked_text, masked_history=masked_history, client=client
     )
 
-    # feedback_config / investigation route to their stub tools when the model
+    # feedback_config / investigation route to their default tools when the model
     # didn't already pick one.
     tool_name = classification.tool or _INTENT_DEFAULT_TOOL.get(classification.intent)
 
@@ -108,6 +108,8 @@ def handle_message(
         card = {"card_type": "task_draft", "payload": tool_result.output}
     elif tool_result.ok and tool_name == "propose_rule_change":
         card = {"card_type": "rule_proposal", "payload": tool_result.output}
+    elif tool_result.ok and tool_name == "start_investigation":
+        card = {"card_type": "investigation", "payload": tool_result.output}
 
     return _finish(
         session,

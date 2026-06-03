@@ -111,12 +111,28 @@ def audit_job() -> None:
     )
 
 
+def investigation_poll_job() -> None:
+    """Run the oldest queued investigation, if any (M13) — its own session lifecycle."""
+    from valeri_api.investigation.runner import poll_queued
+
+    try:
+        investigation_id = poll_queued()
+    except Exception:
+        logger.exception("investigation poll failed")
+        return
+    if investigation_id is not None:
+        logger.info("investigation %d processed by the worker", investigation_id)
+
+
 def create_scheduler(
     daily_hour: int = 6,
     weekly_day_of_week: str = "sun",
     weekly_hour: int = 2,
+    investigation_poll_seconds: int = 10,
 ) -> BlockingScheduler:
-    """The worker's scheduler: a light daily scan + the weekly full cycle + the audit."""
+    """The worker's scheduler: daily scan + weekly cycle + audit + investigation poll."""
+    from apscheduler.triggers.interval import IntervalTrigger
+
     scheduler = BlockingScheduler(timezone=TIMEZONE)
     scheduler.add_job(
         scan_job,
@@ -137,5 +153,12 @@ def create_scheduler(
         ),
         id="over_suppression_audit",
         name="VALERI over-suppression audit (Na provjeri)",
+    )
+    scheduler.add_job(
+        investigation_poll_job,
+        IntervalTrigger(seconds=investigation_poll_seconds, timezone=TIMEZONE),
+        id="investigation_poll",
+        name="VALERI investigation queue poll (M13)",
+        max_instances=1,  # one investigation at a time — bounded resource use
     )
     return scheduler

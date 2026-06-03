@@ -1,6 +1,6 @@
 # Spec — M13: Investigation agent (LangGraph, async, HITL)
 
-**Milestone:** M13 · **Builds on:** M9 (safe tool catalog + chat stub), M12 (Tier-2 routing roles already registered), M7 (approval workflow) · **Status:** approved (D1–D7 defaults OK'd by owner, 2026-06-03)
+**Milestone:** M13 · **Builds on:** M9 (safe tool catalog + chat stub), M12 (Tier-2 routing roles already registered), M7 (approval workflow) · **Status:** implemented (13 agent + 5 tool + 4 web tests; full backend + web suites green, 2026-06-03)
 
 ## 1. Objective
 

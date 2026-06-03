@@ -18,6 +18,8 @@ import type {
   DashboardResponse,
   Decision,
   DismissResponse,
+  Investigation,
+  InvestigationDetail,
   Items,
   LearnedRule,
   LearnedRuleDetail,
@@ -331,6 +333,57 @@ export function useRuleConfig() {
     queryKey: ["settings", "rule-config"],
     queryFn: () => api.get<Items<RuleConfigEntry>>("/api/settings/rule-config"),
     retry: false,
+  })
+}
+
+// ── investigations (M13) ──────────────────────────────────────────────────────
+
+export function useInvestigations(status?: string) {
+  return useQuery<Items<Investigation>>({
+    queryKey: ["investigations", status],
+    queryFn: () => api.get<Items<Investigation>>("/api/investigations", { status }),
+    retry: false,
+  })
+}
+
+export function useInvestigation(investigationId: number | null) {
+  return useQuery<InvestigationDetail>({
+    queryKey: ["investigations", "detail", investigationId],
+    queryFn: () => api.get<InvestigationDetail>(`/api/investigations/${investigationId}`),
+    enabled: investigationId !== null,
+    // Poll while the worker is processing it (queued/running → live progress).
+    refetchInterval: (query) => {
+      const status = query.state.data?.investigation.status
+      return status === "queued" || status === "running" ? 3000 : false
+    },
+  })
+}
+
+export function useCreateInvestigation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { question: string; signal_id?: number }) =>
+      api.post<{ investigation_id: number; status: string }>("/api/investigations", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["investigations"] }),
+  })
+}
+
+export function useResumeInvestigation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      investigationId,
+      decision,
+    }: {
+      investigationId: number
+      decision: "approve" | "reject"
+    }) => api.post(`/api/investigations/${investigationId}/resume`, { decision }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["investigations"] })
+      // Approved actions may have created tasks.
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
   })
 }
 

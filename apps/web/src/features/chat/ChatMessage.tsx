@@ -157,6 +157,28 @@ export function ChatMessage({
         {!isUser && card?.card_type === "rule_proposal" && (
           <RuleProposalCard payload={card.payload} />
         )}
+
+        {/* Inline investigation card (M13 — links to AI Report → Istrage). */}
+        {!isUser && card?.card_type === "investigation" && (
+          <div
+            className="flex flex-col gap-2 rounded-md bg-surface-2 p-3"
+            data-testid="investigation-card"
+          >
+            <div className="flex items-center gap-2">
+              <RegisterChip register="analiza" />
+              <Badge>{String(card.payload.status)}</Badge>
+            </div>
+            <span className="text-sm font-medium text-text">
+              {t.chat.investigation_started} · #{String(card.payload.investigation_id)}
+            </span>
+            <a
+              href="/ai-report"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              {t.chat.view_investigation}
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )

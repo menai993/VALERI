@@ -166,12 +166,17 @@ def test_rescan_does_not_duplicate(scanned_db, seed_data) -> None:
 
 
 def test_scheduler_has_daily_and_weekly_jobs() -> None:
-    """The worker's APScheduler runs a daily scan, the weekly cycle and the M11 audit."""
+    """The worker runs the daily scan, weekly cycle, M11 audit and M13 investigation poll."""
     from valeri_api.scanner.scheduler import create_scheduler
 
     scheduler = create_scheduler()
     job_ids = {job.id for job in scheduler.get_jobs()}
-    assert job_ids == {"daily_scan", "weekly_scan", "over_suppression_audit"}
+    assert job_ids == {
+        "daily_scan",
+        "weekly_scan",
+        "over_suppression_audit",
+        "investigation_poll",
+    }
 
 
 # ── learned-rule suppression (the M4 hook; learned rules are written in M10) ──

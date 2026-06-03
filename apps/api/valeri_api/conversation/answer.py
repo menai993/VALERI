@@ -66,7 +66,7 @@ def narrate_answer(
             "template",
         )
 
-    # The investigation stub (M13) carries its own fixed message; rule proposals
+    # Investigations (M13) carry their own fixed confirmation message; rule proposals
     # (M10) carry an already-LLM-written description — neither needs re-narration
     # (CLAUDE.md cost conventions).
     if tool_result.tool == "start_investigation":
@@ -189,6 +189,6 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
         )
 
     if tool == "start_investigation":
-        return output.get("message", "Ova funkcionalnost stiže u kasnijem milestone-u.")
+        return output.get("message", "Istraga je pokrenuta i obrađuje se u pozadini.")
 
     return f"Podaci iz baze: {output}"

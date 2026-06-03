@@ -57,7 +57,7 @@ jobs:
         run: uv run pytest -v
 
   web:
-    name: Web — lint & build
+    name: Web — lint, test & build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,6 +78,9 @@ jobs:
 
       - name: ESLint
         run: npm run lint
+
+      - name: Vitest
+        run: npm test
 
       - name: Build
         run: npm run build

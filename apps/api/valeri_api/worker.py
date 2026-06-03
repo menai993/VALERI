@@ -1,40 +1,28 @@
-"""Placeholder worker process (M0).
+"""Worker process: runs the scheduled detection scans (M4).
 
-The real scheduler (APScheduler weekly/daily scans) lands in M4; async
-investigations land in M13. This placeholder keeps the compose `worker`
-service running and proves the image/process wiring.
+M0 shipped this as a placeholder loop; from M4 it hosts the APScheduler
+scheduler (daily + weekly scans). Async investigations attach in M13.
 """
 
 import logging
-import signal
-import threading
-
-logger = logging.getLogger("valeri.worker")
-
-HEARTBEAT_SECONDS = 60.0
-
-_stop = threading.Event()
-
-
-def _handle_signal(signum: int, _frame: object) -> None:
-    logger.info("received signal %s — shutting down", signum)
-    _stop.set()
 
 
 def main() -> None:
-    """Run the worker loop until SIGTERM/SIGINT."""
+    """Start the scan scheduler (blocks until SIGTERM/SIGINT)."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    logger = logging.getLogger("valeri.worker")
 
-    logger.info("VALERI worker started (placeholder — scheduler lands in M4)")
-    while not _stop.is_set():
-        logger.info("VALERI worker idle (scheduler lands in M4)")
-        _stop.wait(HEARTBEAT_SECONDS)
-    logger.info("VALERI worker stopped")
+    from valeri_api.scanner.scheduler import create_scheduler
+
+    scheduler = create_scheduler()
+    logger.info("VALERI worker started: %d scheduled jobs", len(scheduler.get_jobs()))
+    try:
+        scheduler.start()  # blocks; handles SIGTERM/SIGINT internally
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("VALERI worker stopped")
 
 
 if __name__ == "__main__":

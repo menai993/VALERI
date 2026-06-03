@@ -1,0 +1,209 @@
+"""M8 acceptance: the dashboard — every rendered number equals an independent SQL value.
+
+GET /dashboard assembles KPIs, the revenue trend, AI insights, at-risk and
+lost-article tables and the owner-report summary. Principle 1: all of it is SQL
+pass-through; principle 2/3/9: every AI row carries evidence + confidence + register.
+"""
+
+import datetime
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import Engine, text
+from sqlalchemy.orm import Session
+
+from tests.conftest import login, make_client
+from tests.fakes import AutoFakeLLMClient
+from valeri_api.seed.users import OWNER_EMAIL
+
+
+def _reset_app_tables(session: Session) -> None:
+    session.execute(
+        text(
+            "TRUNCATE audit.ai_log, audit.task_log, app.task_feedback, app.approval, "
+            "app.owner_report, app.task, app.signal, app.learned_rule RESTART IDENTITY CASCADE"
+        )
+    )
+
+
+@pytest.fixture(scope="module")
+def dashboard_db(db_engine: Engine, seed_data):
+    """Seed → scan → tasks → weekly report: the full data the dashboard reads."""
+    from valeri_api.scanner.scheduler import run_weekly_cycle
+    from valeri_api.seed.loader import load, reset
+
+    as_of = datetime.date.fromisoformat(seed_data.manifest["as_of"])
+    with Session(db_engine) as session:
+        _reset_app_tables(session)
+        reset(session)
+        load(seed_data, session)
+        run_weekly_cycle(session, as_of=as_of, client=AutoFakeLLMClient())
+        session.commit()
+
+    yield db_engine, as_of
+
+    with Session(db_engine) as session:
+        _reset_app_tables(session)
+        reset(session)
+        load(seed_data, session)
+        session.commit()
+
+
+@pytest.fixture
+async def dashboard_payload(dashboard_db):
+    """The /dashboard response (fetched once per test that needs it)."""
+    client = make_client()
+    try:
+        await login(client, OWNER_EMAIL)
+        response = await client.get("/api/dashboard")
+        assert response.status_code == 200, response.text
+        yield dashboard_db[0], response.json()
+    finally:
+        await client.aclose()
+
+
+# ── numbers == SQL ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_dashboard_numbers_match_sql(dashboard_payload) -> None:
+    """Every KPI/trend/table number equals an independent SQL computation."""
+    engine, body = dashboard_payload
+    today = datetime.date.today()
+
+    with engine.connect() as conn:
+        # KPI: ukupan prihod (default range 30d) vs prior 30d.
+        revenue_30d = conn.execute(
+            text(
+                "SELECT COALESCE(SUM(total), 0) FROM core.invoice "
+                "WHERE date > :as_of - 30 AND date <= :as_of"
+            ),
+            {"as_of": today},
+        ).scalar()
+        prior_30d = conn.execute(
+            text(
+                "SELECT COALESCE(SUM(total), 0) FROM core.invoice "
+                "WHERE date > :as_of - 60 AND date <= :as_of - 30"
+            ),
+            {"as_of": today},
+        ).scalar()
+
+        # KPI: open detection counts.
+        declining_customers = conn.execute(
+            text(
+                "SELECT COUNT(DISTINCT customer_id) FROM app.signal "
+                "WHERE rule = 'customer_decline' AND status IN ('new', 'tasked')"
+            )
+        ).scalar()
+        lost_articles_open = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM app.signal "
+                "WHERE rule = 'lost_article' AND status IN ('new', 'tasked')"
+            )
+        ).scalar()
+
+        # KPI: tasks.
+        open_tasks = conn.execute(
+            text("SELECT COUNT(*) FROM app.task WHERE status = 'open'")
+        ).scalar()
+        due_tasks = conn.execute(
+            text("SELECT COUNT(*) FROM app.task WHERE status = 'open' AND due_date <= :as_of"),
+            {"as_of": today},
+        ).scalar()
+
+    kpis = {tile["key"]: tile for tile in body["kpis"]}
+    assert Decimal(kpis["ukupan_prihod"]["value"]) == revenue_30d
+    assert Decimal(kpis["ukupan_prihod"]["prior_value"]) == prior_30d
+    assert kpis["kupci_u_padu"]["value"] == declining_customers
+    assert kpis["izgubljeni_artikli"]["value"] == lost_articles_open
+    assert kpis["zadaci_danas"]["value"] == due_tasks
+    assert kpis["zadaci_danas"]["progress"]["total"] >= open_tasks
+
+    # Revenue trend: each month equals SQL.
+    trend = body["revenue_trend"]
+    assert len(trend["months"]) == 12
+    assert len(trend["revenue"]) == 12
+    assert len(trend["secondary"]) == 12
+    with engine.connect() as conn:
+        for month_label, revenue_value in zip(trend["months"], trend["revenue"], strict=True):
+            sql_value = conn.execute(
+                text(
+                    "SELECT COALESCE(SUM(total), 0) FROM core.invoice "
+                    "WHERE to_char(date, 'YYYY-MM') = :month"
+                ),
+                {"month": month_label},
+            ).scalar()
+            assert Decimal(revenue_value) == sql_value, f"month {month_label} mismatch"
+
+    # At-risk rows: values equal the signals' SQL-computed evidence.
+    with engine.connect() as conn:
+        for row in body["customers_at_risk"]:
+            signal = conn.execute(
+                text("SELECT evidence, confidence FROM app.signal WHERE id = :id"),
+                {"id": row["signal_id"]},
+            ).one()
+            assert Decimal(row["value"]) == Decimal(str(signal.evidence["value"]))
+            assert Decimal(row["baseline"]) == Decimal(str(signal.evidence["baseline"]))
+            assert Decimal(row["confidence"]) == signal.confidence
+
+    # Lost-article rows: from lost_article signals only.
+    with engine.connect() as conn:
+        for row in body["lost_articles"]:
+            rule = conn.execute(
+                text("SELECT rule FROM app.signal WHERE id = :id"), {"id": row["signal_id"]}
+            ).scalar()
+            assert rule == "lost_article"
+
+
+@pytest.mark.anyio
+async def test_dashboard_envelope_on_every_ai_row(dashboard_payload) -> None:
+    """Every AI-derived row carries register + confidence + conf_band + evidence."""
+    _, body = dashboard_payload
+
+    ai_rows = body["ai_insights"] + body["customers_at_risk"] + body["lost_articles"]
+    assert ai_rows, "the planted cases must produce AI rows"
+    for row in ai_rows:
+        assert row["register"] in ("analiza", "preporuka", "akcija")
+        assert row["conf_band"] in ("niska", "srednja", "visoka")
+        assert Decimal(row["confidence"]) >= 0
+        assert row["evidence"], "every AI row must carry its SQL evidence"
+
+    # At-risk rows additionally carry a risk band.
+    for row in body["customers_at_risk"]:
+        assert row["risk_band"] in ("nizak", "srednji", "visok")
+
+    # The owner-report summary is present (the weekly cycle ran) and register-tagged.
+    summary = body["owner_report_summary"]
+    assert summary is not None
+    for metric in summary["metrics"]:
+        assert metric["register"] in ("analiza", "preporuka", "akcija")
+    for bullet in summary["bullets"]:
+        assert bullet["register"] in ("analiza", "preporuka", "akcija")
+
+    # Phase-2 placeholders are explicit, never fake data.
+    assert body["rep_activity"] is None
+    assert body["recently_suppressed"] == []
+
+
+@pytest.mark.anyio
+async def test_dashboard_range_presets(dashboard_db) -> None:
+    """?range=90d changes the KPI window; the value matches SQL for that window."""
+    engine, _ = dashboard_db
+    client = make_client()
+    try:
+        await login(client, OWNER_EMAIL)
+        response = await client.get("/api/dashboard", params={"range": "90d"})
+        assert response.status_code == 200
+        kpis = {tile["key"]: tile for tile in response.json()["kpis"]}
+
+        with engine.connect() as conn:
+            revenue_90d = conn.execute(
+                text(
+                    "SELECT COALESCE(SUM(total), 0) FROM core.invoice "
+                    "WHERE date > :as_of - 90 AND date <= :as_of"
+                ),
+                {"as_of": datetime.date.today()},
+            ).scalar()
+        assert Decimal(kpis["ukupan_prihod"]["value"]) == revenue_90d
+    finally:
+        await client.aclose()

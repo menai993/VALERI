@@ -51,7 +51,7 @@ class PlantedPlan:
 
 @dataclass
 class SeedData:
-    """Everything the seed generates: one list of row-dicts per core.* table + the manifest."""
+    """Everything the seed generates: one list of row-dicts per table + the manifest."""
 
     legal_entities: list[dict]
     customers: list[dict]
@@ -64,3 +64,5 @@ class SeedData:
     invoices: list[dict]
     invoice_lines: list[dict]
     manifest: dict
+    # M8: application logins (app.app_user) — owner/admin/finance + one per rep.
+    app_users: list[dict] = field(default_factory=list)

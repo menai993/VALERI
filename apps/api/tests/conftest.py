@@ -1,5 +1,6 @@
 """Shared test fixtures for the VALERI API test suite."""
 
+import os
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from valeri_api.config import get_settings
 from valeri_api.db import get_engine
 
 API_ROOT = Path(__file__).resolve().parent.parent
+
+# Tests never talk to a real LLM gateway: narration stays disabled unless a test
+# explicitly injects a (fake) client. The production default remains enabled.
+os.environ.setdefault("LLM_NARRATION_ENABLED", "false")
 
 
 @pytest.fixture
@@ -112,3 +117,67 @@ def seeded_db(db_engine: Engine, seed_data) -> Engine:
         load(seed_data, session)
         session.commit()
     return db_engine
+
+
+# ── Auth fixtures (M8): cookie-carrying ASGI clients per role ────────────────
+
+
+async def login(client: httpx.AsyncClient, email: str, password: str | None = None) -> None:
+    """Log an ASGI client in as a seed user; the session cookie stays in its jar."""
+    from valeri_api.seed.users import DEV_PASSWORD
+
+    response = await client.post(
+        "/api/auth/login", json={"email": email, "password": password or DEV_PASSWORD}
+    )
+    assert response.status_code == 200, f"login failed for {email}: {response.text}"
+
+
+def make_client() -> httpx.AsyncClient:
+    """A fresh (unauthenticated) ASGI client."""
+    from valeri_api.main import app
+
+    transport = httpx.ASGITransport(app=app)
+    return httpx.AsyncClient(transport=transport, base_url="http://test")
+
+
+@pytest.fixture
+async def owner_client(seeded_db) -> AsyncIterator[httpx.AsyncClient]:
+    """Client authenticated as the seeded owner."""
+    from valeri_api.seed.users import OWNER_EMAIL
+
+    client = make_client()
+    await login(client, OWNER_EMAIL)
+    yield client
+    await client.aclose()
+
+
+@pytest.fixture
+async def admin_client(seeded_db) -> AsyncIterator[httpx.AsyncClient]:
+    """Client authenticated as the seeded admin."""
+    from valeri_api.seed.users import ADMIN_EMAIL
+
+    client = make_client()
+    await login(client, ADMIN_EMAIL)
+    yield client
+    await client.aclose()
+
+
+@pytest.fixture
+async def finance_client(seeded_db) -> AsyncIterator[httpx.AsyncClient]:
+    """Client authenticated as the seeded finance user."""
+    from valeri_api.seed.users import FINANCE_EMAIL
+
+    client = make_client()
+    await login(client, FINANCE_EMAIL)
+    yield client
+    await client.aclose()
+
+
+@pytest.fixture
+async def rep_client(seeded_db, seed_data) -> AsyncIterator[httpx.AsyncClient]:
+    """Client authenticated as the first seeded sales rep."""
+    rep_user = next(user for user in seed_data.app_users if user["role"] == "sales_rep")
+    client = make_client()
+    await login(client, rep_user["email"])
+    yield client
+    await client.aclose()

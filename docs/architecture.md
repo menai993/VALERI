@@ -21,6 +21,7 @@ Data posture: app + DB + all business data stay on the server. The LLM tiers are
 ## 2. Component map (backend packages → responsibility)
 
 `apps/api/valeri_api/`
+
 - `domain/` — SQLAlchemy models + Pydantic schemas for the business graph and app objects.
 - `ingest/` — staging loaders (CSV/Excel/export), idempotent upsert to `core.*`, data-quality report.
 - `metrics/` — deterministic SQL metrics (turnover, intervals, baselines); the only place numbers are produced.
@@ -40,18 +41,18 @@ Data posture: app + DB + all business data stay on the server. The LLM tiers are
 ## 3. Data flow
 
 1. **Ingest → trust core:** export → `staging.*` → idempotent upsert → `core.*`; quality report flags dupes/renames/code-swaps.
-2. **Metrics:** SQL recompute → `core.customer_metrics`, `cust_article_cadence`, `segment_basket`.
-3. **Detect:** scanner runs rules over the graph (consulting `learned_rule`) → `app.signal` with evidence + confidence.
-4. **Act:** signal → `app.task` (assignee, due, evidence); LLM narrates the Bosnian task text from finished numbers and tags the register; `ai_log`/`task_log` written.
-5. **Report:** weekly owner report aggregates (SQL) + LLM narrative + register tags; customer-facing items become approval-gated drafts.
-6. **Learn:** a dismissal + reason → Tier-1 structures a rule change → graduated apply → `learned_rule` + reversible `decision`; scanner suppresses matching future signals (`suppression_hit`); the auditor re-surfaces drifted suppressions.
-7. **Converse:** chat message → intent router → tool calls (numbers from SQL) → register-tagged answer; "Istraži" → investigation.
-8. **Investigate:** Tier-2 LangGraph agent decomposes → tool loop → critic → report (narrative + evidence + confidence + trace), async, HITL before any external draft.
+1. **Metrics:** SQL recompute → `core.customer_metrics`, `cust_article_cadence`, `segment_basket`.
+1. **Detect:** scanner runs rules over the graph (consulting `learned_rule`) → `app.signal` with evidence + confidence.
+1. **Act:** signal → `app.task` (assignee, due, evidence); LLM narrates the Bosnian task text from finished numbers and tags the register; `ai_log`/`task_log` written.
+1. **Report:** weekly owner report aggregates (SQL) + LLM narrative + register tags; customer-facing items become approval-gated drafts.
+1. **Learn:** a dismissal + reason → Tier-1 structures a rule change → graduated apply → `learned_rule` + reversible `decision`; scanner suppresses matching future signals (`suppression_hit`); the auditor re-surfaces drifted suppressions.
+1. **Converse:** chat message → intent router → tool calls (numbers from SQL) → register-tagged answer; “Istraži” → investigation.
+1. **Investigate:** Tier-2 LangGraph agent decomposes → tool loop → critic → report (narrative + evidence + confidence + trace), async, HITL before any external draft.
 
 ## 4. LLM integration (the boundary the product depends on)
 
 - **The LLM never computes a business number.** SQL/Python computes; the LLM interprets, narrates, classifies, drafts. Contract tests assert rendered numbers equal SQL output.
-- **Tiers (hosted Claude via LiteLLM, OpenAI-compatible):** Tier-1 = Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) for narration/intent/NL→rule/simple Q&A; Tier-2 = Claude Sonnet 4.6 (`claude-sonnet-4-6`) default, escalating to Claude Opus 4.8 (`claude-opus-4-8`) for the hardest investigations. Confirm models/limits at https://docs.claude.com.
+- **Tiers (hosted Claude via LiteLLM, OpenAI-compatible):** Tier-1 = Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) for narration/intent/NL→rule/simple Q&A; Tier-2 = Claude Sonnet 4.6 (`claude-sonnet-4-6`) default, escalating to Claude Opus 4.8 (`claude-opus-4-8`) for the hardest investigations. Confirm models/limits at <https://docs.claude.com>.
 - **Routing:** role-based assignment; optional cascade escalation on low self-confidence/validator-reject; `audit.llm_route_log` for every decision; keep ~60–70% on Haiku; prompt caching + Batch API for non-interactive jobs.
 - **PII masking (load-bearing):** before any prompt, replace customer/contact identity with stable pseudonyms (+segment, +tier) and strip email/phone/address; the app rehydrates real names for humans only. No raw business identifier appears in any API payload.
 - **Structured outputs:** every LLM response is parsed into a Pydantic model; malformed output is rejected and retried, never shown raw.
@@ -67,6 +68,20 @@ Read-only ERP access; PII masking; ZDR; append-only audit (`ai_log`, `task_log`,
 - Tests: golden tests for metrics; labeled fixtures for rules; contract tests for tools (numbers == SQL) and LLM output schemas; HITL/loop-cap tests for the agent.
 - Migrations via Alembic; one migration per schema-changing milestone.
 
-## 7. Background (the "why")
+## 7. Background (the “why”)
 
-Product rationale and competitive landscape live in `metarium-onprem-proposal.md` and `metarium-conversational-selfconfig-design.md` (product name "Metarium" in those = VALERI).
+Product rationale and competitive landscape live in `metarium-onprem-proposal.md` and `metarium-conversational-selfconfig-design.md` (product name “Metarium” in those = VALERI).
+
+## 8. Language policy
+
+VALERI is **Bosnian-first**. A configurable `preferred_language` (default `'bs'`) governs three things:
+
+1. **What the LLM writes** — task bodies, weekly-report narrative, chat replies, clarification questions, and knowledge-base summaries are all generated in the preferred language. Every prompt template includes “respond in {preferred_language}”.
+1. **What is stored as human-readable text** — `task.body`, `client_profile.summary`, `client_fact` human values, `commercial_event.summary`, `learned_rule.description`, `clarification.question`, and `investigation.report` narrative are stored in the preferred language (default Bosnian).
+1. **The UI default** — Bosnian, with an EN toggle (per `frontend-spec.md`).
+
+**Structural identifiers stay English** — enum values, `fact_type`/`rel_type` keys, register codes, table/column names. These are code, not display text; only human-readable values/summaries are localized. This keeps queries, rules, and logs stable while everything a person reads is Bosnian.
+
+If a user writes in another language, the model still extracts to structured records and writes the stored **summary in the preferred language** (normalising the narrative to Bosnian), while preserving the original utterance as evidence.
+
+The setting lives at the **system level** (default) and optionally **per user** (`app_user.preferred_language`, additive column). Bosnian narration quality is evaluated on Tier-1 (Haiku) in M6; route narration to Sonnet if richer phrasing is wanted (a cost-aware choice — see `docs/llm-cost.md`).

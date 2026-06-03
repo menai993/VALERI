@@ -1,0 +1,65 @@
+/**
+ * Typed fetch wrapper (frontend-spec §6).
+ *
+ * - credentials: 'include' — the session is an httpOnly cookie (M8 D1);
+ *   JavaScript never sees the token and nothing touches localStorage.
+ * - Error envelopes ({error: {code, message}}) become ApiRequestError.
+ * - 401 responses flag the session as expired (the AuthGuard redirects).
+ */
+
+export class ApiRequestError extends Error {
+  status: number
+  code: string
+
+  constructor(status: number, code: string, message: string) {
+    super(message)
+    this.name = "ApiRequestError"
+    this.status = status
+    this.code = code
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...init?.headers },
+    ...init,
+  })
+
+  if (response.status === 204) return undefined as T
+
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    body = null
+  }
+
+  if (!response.ok) {
+    const envelope = body as { error?: { code?: string; message?: string } } | null
+    throw new ApiRequestError(
+      response.status,
+      envelope?.error?.code ?? String(response.status),
+      envelope?.error?.message ?? response.statusText,
+    )
+  }
+  return body as T
+}
+
+export const api = {
+  get: <T>(path: string, params?: Record<string, string | number | undefined>) => {
+    const query = params
+      ? "?" +
+        new URLSearchParams(
+          Object.entries(params)
+            .filter(([, value]) => value !== undefined && value !== "")
+            .map(([key, value]) => [key, String(value)]),
+        ).toString()
+      : ""
+    return request<T>(`${path}${query}`)
+  },
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+}

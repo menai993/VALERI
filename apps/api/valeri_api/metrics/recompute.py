@@ -37,6 +37,16 @@ def recompute_all(session: Session, as_of: datetime.date | None = None) -> Recom
     reference_date = as_of or datetime.date.today()
     rows: dict[str, int] = {}
 
+    # The recompute always runs right after bulk data changes (imports, seed
+    # loads) — often inside the same transaction — where planner statistics can
+    # be arbitrarily stale ("table is empty") and nested-loop plans become
+    # catastrophic on the join-heavy queries below. Two defenses:
+    #  1. refresh statistics;
+    #  2. force hash/merge joins for this transaction (SET LOCAL reverts at
+    #     commit/rollback) — always the right choice for full-table aggregation.
+    session.execute(text("ANALYZE"))
+    session.execute(text("SET LOCAL enable_nestloop = off"))
+
     for table, sql_file in _TABLES:
         statement = (SQL_DIR / sql_file).read_text(encoding="utf-8")
         session.execute(text(f"DELETE FROM {table}"))  # noqa: S608 - fixed internal table list

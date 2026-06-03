@@ -165,3 +165,113 @@ async def test_user_management_admin_only(seeded_db: Engine) -> None:
             conn.commit()
     finally:
         await client.aclose()
+
+
+# ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_llm_settings_get_and_patch(seeded_db: Engine) -> None:
+    """M12: GET shows routing config + locked masking; PATCH (admin) changes role
+    tiers/escalation, writes reversible decisions, and the router picks it up."""
+    from sqlalchemy.orm import Session
+
+    client = make_client()
+    try:
+        await login(client, ADMIN_EMAIL)
+
+        # ── GET: the full routing picture ─────────────────────────────────────
+        response = await client.get("/api/settings/llm")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["masking"] == "locked_on"
+        assert body["provider"].startswith("anthropic")
+        assert set(body["tiers"]) == {"tier1", "tier2", "tier2_strong"}
+        assert body["role_tiers"]["narration"] == "tier1"
+        assert body["role_tiers"]["over_suppression_audit"] == "tier2"
+        assert body["cascade_enabled"] is True
+
+        # ── PATCH: the Sonnet→Opus swap for the audit role + tighter escalation ──
+        with seeded_db.connect() as conn:
+            decisions_before = conn.execute(
+                text("SELECT COUNT(*) FROM app.decision WHERE kind = 'threshold_change'")
+            ).scalar()
+
+        new_role_tiers = dict(body["role_tiers"])
+        new_role_tiers["over_suppression_audit"] = "tier2_strong"
+        patched = await client.patch(
+            "/api/settings/llm",
+            json={"role_tiers": new_role_tiers, "escalation_confidence_threshold": 0.7},
+        )
+        assert patched.status_code == 200
+        assert patched.json()["role_tiers"]["over_suppression_audit"] == "tier2_strong"
+        assert patched.json()["escalation_confidence_threshold"] == 0.7
+
+        # Each change wrote one reversible decision (old + new values preserved).
+        with seeded_db.connect() as conn:
+            decisions_after = conn.execute(
+                text("SELECT COUNT(*) FROM app.decision WHERE kind = 'threshold_change'")
+            ).scalar()
+            latest = conn.execute(
+                text(
+                    "SELECT reversible, payload FROM app.decision "
+                    "WHERE kind = 'threshold_change' ORDER BY id DESC LIMIT 2"
+                )
+            ).all()
+        assert decisions_after == decisions_before + 2
+        assert all(row.reversible for row in latest)
+        params_changed = {row.payload["param"] for row in latest}
+        assert params_changed == {"role_tiers", "escalation_confidence_threshold"}
+
+        # The router immediately routes the audit role to the new tier (config-only swap).
+        from valeri_api.llm.router.router import initial_route
+
+        with Session(seeded_db) as session:
+            decision = initial_route(session, "over_suppression_audit")
+            assert decision.chosen_tier == "tier2_strong"
+            session.rollback()  # the route-log row from this check is not needed
+
+        # ── invalid tier → 422 ────────────────────────────────────────────────
+        bad = await client.patch("/api/settings/llm", json={"role_tiers": {"narration": "tier99"}})
+        assert bad.status_code == 422
+
+        # ── masking cannot be disabled: unknown fields are rejected ──────────
+        masked = await client.patch("/api/settings/llm", json={"masking": "off"})
+        assert masked.status_code == 422
+        masked2 = await client.patch("/api/settings/llm", json={"pii_masking_enabled": False})
+        assert masked2.status_code == 422
+
+        # Restore the defaults for other tests.
+        await client.patch(
+            "/api/settings/llm",
+            json={"role_tiers": body["role_tiers"], "escalation_confidence_threshold": 0.6},
+        )
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.anyio
+async def test_llm_settings_rbac(seeded_db: Engine) -> None:
+    """Owner reads but cannot write; finance/rep can do neither."""
+    from valeri_api.seed.users import FINANCE_EMAIL, OWNER_EMAIL
+
+    owner_client = make_client()
+    finance_client = make_client()
+    try:
+        await login(owner_client, OWNER_EMAIL)
+        await login(finance_client, FINANCE_EMAIL)
+
+        # Owner: read yes, write no.
+        assert (await owner_client.get("/api/settings/llm")).status_code == 200
+        owner_patch = await owner_client.patch("/api/settings/llm", json={"cascade_enabled": False})
+        assert owner_patch.status_code == 403
+
+        # Finance: neither.
+        assert (await finance_client.get("/api/settings/llm")).status_code == 403
+        finance_patch = await finance_client.patch(
+            "/api/settings/llm", json={"cascade_enabled": False}
+        )
+        assert finance_patch.status_code == 403
+    finally:
+        await owner_client.aclose()
+        await finance_client.aclose()

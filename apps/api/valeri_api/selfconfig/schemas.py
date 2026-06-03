@@ -83,6 +83,10 @@ class LearnedRuleRead(BaseModel):
     expires_at: datetime.datetime | None
     # SQL-computed actual effect (hit count), joined by the API:
     suppression_count: int = 0
+    # M11 — origin (rehydrated, human-facing) + the open Na provjeri flag:
+    source_customer_name: str | None = None
+    created_by_name: str | None = None
+    na_provjeri: bool = False
 
 
 class SuppressionHitRead(BaseModel):
@@ -92,6 +96,17 @@ class SuppressionHitRead(BaseModel):
     learned_rule_id: int
     signal_id: int | None
     suppressed_at: datetime.datetime
+
+
+class SuppressionHitDetail(SuppressionHitRead):
+    """M11: a hit joined to its suppressed signal — 'what it hid', viewable."""
+
+    rule: str | None = None
+    customer_id: int | None = None
+    customer_name: str | None = None  # rehydrated — this is human-facing API output
+    evidence: dict[str, Any] | None = None
+    confidence: float | None = None
+    conf_band: str | None = None
 
 
 class DecisionRead(BaseModel):
@@ -147,9 +162,47 @@ class LearnedRuleListResponse(BaseModel):
 
 class LearnedRuleDetailResponse(BaseModel):
     rule: LearnedRuleRead
-    hits: list[SuppressionHitRead]
+    hits: list[SuppressionHitDetail]
     decisions: list[DecisionRead]
 
 
 class DecisionListResponse(BaseModel):
     items: list[DecisionRead]
+
+
+# ── over-suppression auditor (M11) ────────────────────────────────────────────
+
+
+class AuditSummaryText(BaseModel):
+    """LLM output schema for the Na provjeri summary (Bosnian, validated, never raw)."""
+
+    text: str = Field(min_length=20)
+    register: Literal["analiza", "preporuka", "akcija"] = "analiza"
+
+
+class DriftReport(BaseModel):
+    """One drifted suppressed stream — every number here is SQL/Python over the DB."""
+
+    learned_rule_id: int
+    drift_kind: Literal["value", "volume"]
+    rule: str | None = None  # the suppressed detection rule
+    customer_id: int | None = None
+    customer_name: str | None = None  # rehydrated — for humans (masked before any LLM call)
+    segment: str | None = None
+    suppressed_signal_id: int | None = None
+    # value drift (current/baseline ratio of the suppressed metric):
+    baseline_value: float | None = None
+    current_value: float | None = None
+    drift_factor: float | None = None
+    # volume drift (actual hits vs the predicted blast radius):
+    predicted_signals: int | None = None
+    actual_hits: int | None = None
+
+
+class AuditResult(BaseModel):
+    """What one auditor run examined and raised."""
+
+    rules_checked: int = 0
+    flagged: list[DriftReport] = []
+    skipped_already_flagged: int = 0
+    expired_rule_ids: list[int] = []

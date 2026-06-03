@@ -110,6 +110,17 @@ export interface OwnerReportSummary {
   bullets: SummaryBullet[]
 }
 
+/** M11: one recently-hidden detection on the dashboard. */
+export interface RecentlySuppressedRow {
+  hit_id: number
+  learned_rule_id: number
+  description: string
+  rule: string | null
+  customer_id: number | null
+  customer_name: string | null
+  suppressed_at: string
+}
+
 export interface DashboardResponse {
   as_of: string
   range_days: number
@@ -120,7 +131,8 @@ export interface DashboardResponse {
   lost_articles: LostArticleRow[]
   rep_activity: null
   owner_report_summary: OwnerReportSummary | null
-  recently_suppressed: unknown[]
+  recently_suppressed: RecentlySuppressedRow[]
+  opportunities: OpportunitySummary | null // C-CRM1: the Prilike block (null until used)
 }
 
 // ── customers ─────────────────────────────────────────────────────────────────
@@ -252,6 +264,29 @@ export interface RuleConfigEntry {
   updated_at: string | null
 }
 
+// ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+export interface LlmTierInfo {
+  alias: string
+  description: string
+}
+
+export interface LlmSettings {
+  provider: string
+  tiers: Record<string, LlmTierInfo>
+  role_tiers: Record<string, string>
+  escalation_confidence_threshold: number
+  cascade_enabled: boolean
+  cascade_max_escalations: number
+  masking: "locked_on"
+}
+
+export interface LlmSettingsPatch {
+  role_tiers?: Record<string, string>
+  escalation_confidence_threshold?: number
+  cascade_enabled?: boolean
+}
+
 // ── self-configuration (M10) ──────────────────────────────────────────────────
 
 /** The resolved scope of a learned rule (data-model.md scope JSONB shape). */
@@ -289,6 +324,31 @@ export interface LearnedRule {
   created_at: string
   expires_at: string | null
   suppression_count: number
+  // M11 — origin (rehydrated names) + the open Na provjeri flag:
+  source_customer_name: string | null
+  created_by_name: string | null
+  na_provjeri: boolean
+}
+
+/** M11: one suppression hit joined to its suppressed signal — "what it hid". */
+export interface SuppressionHitDetail {
+  id: number
+  learned_rule_id: number
+  signal_id: number | null
+  suppressed_at: string
+  rule: string | null
+  customer_id: number | null
+  customer_name: string | null
+  evidence: Record<string, unknown> | null
+  confidence: number | null
+  conf_band: ConfBand | null
+}
+
+/** GET /learned-rules/{id} response. */
+export interface LearnedRuleDetail {
+  rule: LearnedRule
+  hits: SuppressionHitDetail[]
+  decisions: Decision[]
 }
 
 export interface Decision {
@@ -327,6 +387,110 @@ export interface ApplyResponse {
   learned_rule: LearnedRule
   decision: Decision
   register: "akcija"
+}
+
+// ── opportunities / CRM (C-CRM1) ──────────────────────────────────────────────
+
+export type OppStage = "lead" | "qualified" | "proposal" | "negotiation" | "won" | "lost"
+
+export interface Opportunity {
+  id: number
+  customer_id: number
+  customer_name: string | null
+  title: string
+  value: string | null
+  probability: string | null
+  stage: OppStage
+  source: string | null
+  expected_close: string | null
+  owner_rep_id: number | null
+  owner_rep_name: string | null
+  effective_probability: string | null
+  weighted_value: string | null
+  created_at: string
+}
+
+export interface PipelineStageColumn {
+  stage: OppStage
+  count: number
+  value: string
+  weighted_value: string
+  opportunities: Opportunity[]
+}
+
+export interface PipelineResponse {
+  stages: PipelineStageColumn[]
+  total_weighted_value: string
+  conversion_rate: string
+  open_count: number
+}
+
+/** The dashboard 'Prilike' block (Otvorene prilike / Stopa konverzije / Najveće prilike). */
+export interface OpportunitySummary {
+  open_count: number
+  conversion_rate: string
+  weighted_value: string
+  top: {
+    id: number
+    title: string
+    customer_name: string | null
+    value: string | null
+    probability: string | null
+    weighted_value: string
+  }[]
+}
+
+// ── investigations (M13) ──────────────────────────────────────────────────────
+
+export type InvestigationStatus = "queued" | "running" | "needs_input" | "done" | "failed"
+
+export interface Investigation {
+  id: number
+  trigger: string
+  question: string
+  status: InvestigationStatus
+  model_tier: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_by: number | null
+  signal_id: number | null
+  created_at: string
+}
+
+export interface InvestigationFinding {
+  text: string
+  confidence: number
+  register: Register
+}
+
+/** The stored report (narrative + findings + next step), all Bosnian, numbers from SQL. */
+export interface InvestigationReportData {
+  narrative: string
+  findings: InvestigationFinding[]
+  confidence: number
+  next_step: string
+  next_step_register: Register
+  register: Register
+  narrative_source: "llm" | "template"
+  budget_exhausted?: string
+  trace_ref?: string
+}
+
+export interface InvestigationStep {
+  id: number
+  step_no: number
+  node: string | null
+  tool: string | null
+  input: Record<string, unknown> | null
+  output: Record<string, unknown> | null
+  at: string
+}
+
+export interface InvestigationDetail {
+  investigation: Investigation
+  report: InvestigationReportData | null
+  steps: InvestigationStep[]
+  pending_actions: Record<string, unknown>[]
 }
 
 // ── generic list shapes ───────────────────────────────────────────────────────

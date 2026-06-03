@@ -13,6 +13,8 @@ from valeri_api.rules.engine import load_rule_config
 from valeri_api.selfconfig.schemas import EffectEstimate
 
 # One query handles every scope kind via NULL-guarded filters; all values are binds.
+# Category scopes match the signal's evidence category OR the customer's segment —
+# exactly what engine.find_suppression matches (M11: predicted == actual).
 _EFFECT_SQL = """
 SELECT s.rule, COUNT(*) AS n
 FROM app.signal s
@@ -21,7 +23,10 @@ WHERE s.created_at > now() - make_interval(days => :window_days)
   AND (CAST(:rule AS text) IS NULL OR s.rule = :rule)
   AND (CAST(:customer_id AS bigint) IS NULL OR s.customer_id = :customer_id)
   AND (CAST(:article_id AS bigint) IS NULL OR s.article_id = :article_id)
-  AND (CAST(:segment AS text) IS NULL OR c.segment = :segment)
+  AND (CAST(:category AS text) IS NULL
+       OR s.evidence->>'category_name' = :category
+       OR s.evidence->>'segment' = :category
+       OR c.segment = :category)
 GROUP BY s.rule
 """
 
@@ -49,8 +54,7 @@ def estimate_effect(session: Session, scope: dict[str, Any]) -> EffectEstimate:
             "rule": scope.get("rule"),
             "customer_id": customer_id,
             "article_id": article_id,
-            # Category scopes match the customer segment (find_suppression semantics).
-            "segment": scope.get("category") if scope.get("kind") == "category" else None,
+            "category": scope.get("category") if scope.get("kind") == "category" else None,
         },
     ).all()
 

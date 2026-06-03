@@ -104,6 +104,7 @@ const dashboardFixture: DashboardResponse = {
     ],
   },
   recently_suppressed: [],
+  opportunities: null,
 }
 
 function renderDashboard() {
@@ -219,5 +220,49 @@ describe("DashboardPage", () => {
       expect(screen.getAllByTestId("empty-state").length).toBeGreaterThanOrEqual(3),
     )
     expect(screen.getByText("Nema novih AI uvida")).toBeInTheDocument()
+    // M11: no suppressions → the quiet list stays hidden entirely (no noise).
+    expect(screen.queryByTestId("recently-suppressed")).not.toBeInTheDocument()
+  })
+
+  it("renders the recently-suppressed list when learned rules hid signals (M11)", async () => {
+    const withSuppressed: DashboardResponse = {
+      ...dashboardFixture,
+      recently_suppressed: [
+        {
+          hit_id: 31,
+          learned_rule_id: 5,
+          description: "Ne prijavljuj pad prometa za ovog kupca — sezonski obrazac.",
+          rule: "customer_decline",
+          customer_id: 7,
+          customer_name: "Hotel Stari Grad",
+          suppressed_at: "2026-06-03T06:00:00Z",
+        },
+        {
+          hit_id: 30,
+          learned_rule_id: 5,
+          description: "Ne prijavljuj pad prometa za ovog kupca — sezonski obrazac.",
+          rule: "customer_decline",
+          customer_id: 7,
+          customer_name: "Hotel Stari Grad",
+          suppressed_at: "2026-06-02T06:00:00Z",
+        },
+      ],
+    }
+    mockFetch(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(withSuppressed), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    )
+
+    renderDashboard()
+
+    await waitFor(() => expect(screen.getByTestId("recently-suppressed")).toBeInTheDocument())
+    const list = screen.getByTestId("recently-suppressed")
+    expect(list).toHaveTextContent("Nedavno potisnuto")
+    expect(list).toHaveTextContent("Hotel Stari Grad")
+    expect(list).toHaveTextContent("Pogledajte naučena pravila →")
   })
 })

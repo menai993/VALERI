@@ -16,9 +16,16 @@ class Settings(BaseSettings):
     # ── LLM gateway (M6) — hosted Claude via LiteLLM, OpenAI-compatible ──────
     litellm_base_url: str = "http://litellm:4000"
     litellm_master_key: str = ""  # secret, from env
-    llm_tier1_model: str = "tier1"  # LiteLLM model name → Claude Haiku 4.5
+    # LiteLLM aliases per tier (M12). The app addresses the gateway by ALIAS only;
+    # the alias→Claude-model mapping lives in infra/litellm.config.yaml + .env
+    # (LLM_TIER*_MODEL), so swapping a tier's model never touches code.
+    llm_tier1_alias: str = "tier1"  # → Claude Haiku 4.5
+    llm_tier2_alias: str = "tier2"  # → Claude Sonnet 4.6
+    llm_tier2_strong_alias: str = "tier2_strong"  # → Claude Opus 4.8
     llm_narration_enabled: bool = True
     llm_max_retries: int = 2
+    # Prompt caching (M12 cost lever): stable system prompts are marked cacheable.
+    llm_prompt_cache_enabled: bool = True
 
     # ── PII masking (M6) — pseudonym salt; load-bearing, keep secret ─────────
     pii_salt: str = "dev-only-salt-change-me"

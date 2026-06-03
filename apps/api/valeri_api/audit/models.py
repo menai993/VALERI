@@ -93,3 +93,25 @@ class Decision(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class LlmRouteLog(Base):
+    """One LLM routing decision (M12). APPEND-ONLY: rows are only ever inserted.
+
+    Records WHY a given model answered a given call (role mapping, cascade
+    escalation, injected test client) — ai_log records the call itself.
+    """
+
+    __tablename__ = "llm_route_log"
+    __table_args__ = {"schema": "audit"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    request_id: Mapped[str | None] = mapped_column(Text)
+    task_role: Mapped[str | None] = mapped_column(Text)
+    chosen_tier: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

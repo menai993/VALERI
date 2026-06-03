@@ -146,7 +146,10 @@ def test_contract_output_validates_against_schema(scanned_session) -> None:
     assert 0 <= result.narration.confidence <= 1
 
     # b) Persistently bad output -> NarrationFailed (caller falls back to templates).
-    always_bad = FakeLLMClient(["nije json", '{"body": "x"}', '{"register": "haos"}'])
+    # M12: validator-rejects cascade one tier up, so "persistent" means TWO tiers'
+    # worth of retries before the failure — the contract (never return garbage,
+    # fail explicitly) is unchanged.
+    always_bad = FakeLLMClient(["nije json", '{"body": "x"}', '{"register": "haos"}'] * 2)
     with pytest.raises(NarrationFailed):
         narrate_task(
             session,
@@ -171,6 +174,7 @@ def test_contract_rendered_numbers_equal_sql_numbers(scanned_session) -> None:
     signal = next(row for row in _signal_rows(session) if row.rule == "customer_decline")
 
     # a) Invented number -> rejected on every attempt -> NarrationFailed.
+    # M12: the cascade adds a second tier's retry budget before giving up.
     invented = json.dumps(
         {
             "body": "Kupac je smanjio kupovinu za 99999.99 KM što je veliki pad.",
@@ -179,7 +183,7 @@ def test_contract_rendered_numbers_equal_sql_numbers(scanned_session) -> None:
         },
         ensure_ascii=False,
     )
-    fake = FakeLLMClient([invented, invented, invented])
+    fake = FakeLLMClient([invented] * 6)
     with pytest.raises(NarrationFailed):
         narrate_task(
             session,

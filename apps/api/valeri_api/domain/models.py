@@ -180,6 +180,9 @@ class Invoice(Base):
     __tablename__ = "invoice"
     __table_args__ = (
         Index("ix_invoice_customer_date", "customer_id", "date"),
+        # M14 perf: all-customer date-range aggregations (dashboard trend, weekly
+        # report, metrics baseline) — the composite above leads with customer_id.
+        Index("ix_invoice_date", "date"),
         {"schema": "core"},
     )
 

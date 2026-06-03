@@ -241,6 +241,7 @@ def _draft_message(
                 ),
                 client=client,
                 register="akcija",
+                role="customer_draft",  # M12: Tier-1 by role
             )
             # Drafts are reviewed by humans → rehydrate the real customer name.
             return rehydrate(draft.text, context), "llm"

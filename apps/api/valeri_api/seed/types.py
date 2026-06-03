@@ -66,3 +66,6 @@ class SeedData:
     manifest: dict
     # M8: application logins (app.app_user) — owner/admin/finance + one per rep.
     app_users: list[dict] = field(default_factory=list)
+    # C-CRM1: demo opportunities + their initial stage history (Phase-2 CRM).
+    opportunities: list[dict] = field(default_factory=list)
+    opportunity_stage_history: list[dict] = field(default_factory=list)

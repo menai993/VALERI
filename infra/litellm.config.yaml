@@ -2,26 +2,28 @@
 #
 # All tiers are hosted Claude models via the Anthropic API; the key comes from
 # the environment (never from this file). The app talks OpenAI-compatible
-# protocol to this gateway and addresses models by tier name only, so swapping
-# a tier's underlying model is config-only.
+# protocol to this gateway and addresses models by tier ALIAS only (tier1 /
+# tier2 / tier2_strong). The alias→model mapping reads LLM_TIER*_MODEL from the
+# environment (.env), so swapping a tier's underlying model — e.g. Sonnet↔Opus —
+# is config-only: edit .env and restart the gateway (M12).
 
 model_list:
   # Tier-1 — small/fast/cheap: narration, intent, NL→rule, simple Q&A
   - model_name: tier1
     litellm_params:
-      model: anthropic/claude-haiku-4-5-20251001
+      model: os.environ/LLM_TIER1_MODEL
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  # Tier-2 — strong default: most chat and first-pass investigation
+  # Tier-2 — strong default: over-suppression audits, investigations (M13)
   - model_name: tier2
     litellm_params:
-      model: anthropic/claude-sonnet-4-6
+      model: os.environ/LLM_TIER2_MODEL
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  # Tier-2 strong — hardest investigations only
+  # Tier-2 strong — hardest investigation synthesis only
   - model_name: tier2_strong
     litellm_params:
-      model: anthropic/claude-opus-4-8
+      model: os.environ/LLM_TIER2_STRONG_MODEL
       api_key: os.environ/ANTHROPIC_API_KEY
 
 litellm_settings:

@@ -580,6 +580,105 @@ def test_edit_scope_writes_decision(sc) -> None:
     assert decisions[-1].payload["old_scope"]["rule"] == "customer_decline"
 
 
+def test_edit_scope_threshold_guard(sc) -> None:
+    """M11: a threshold rule's scope cannot be edited (it IS the config change) — 409."""
+    from valeri_api.selfconfig.applier import InvalidRuleState, apply_rule, edit_scope
+    from valeri_api.selfconfig.proposer import propose_from_dismissal
+
+    session, owner, signal, _ = sc
+    threshold_proposal = {
+        "rule_type": "threshold",
+        "scope": {
+            "kind": "threshold",
+            "rule": "customer_decline",
+            "metric": "decline_ratio_threshold",
+            "op": "<",
+            "value": 0.5,
+        },
+        "description": "Prijavljuj pad prometa tek ispod 50% uobičajenog nivoa.",
+        "interpretation_confidence": 0.9,
+    }
+    fake = ProposerFakeLLMClient(threshold_proposal)
+    response = propose_from_dismissal(
+        session, signal.id, "Prag je preosjetljiv, smanji ga na 50%.", owner, client=fake
+    )
+    apply_rule(session, response.learned_rule.id, owner)
+    decisions_before = len(_decision_rows(session))
+
+    with pytest.raises(InvalidRuleState):
+        edit_scope(
+            session,
+            response.learned_rule.id,
+            {"kind": "threshold", "rule": "customer_decline", "metric": "x", "value": 0.1},
+            owner,
+        )
+
+    # Nothing changed, nothing written.
+    assert len(_decision_rows(session)) == decisions_before
+
+
+# ── 9b. category (segment) scope works end-to-end (M11 fix 6a) ────────────────
+
+
+def test_category_scope_suppresses_segment_signals_end_to_end(sc) -> None:
+    """A confirmed segment rule actually suppresses that segment's future signals,
+    and the SQL effect estimate equals what the engine then really suppressed."""
+    from valeri_api.selfconfig.applier import apply_rule
+    from valeri_api.selfconfig.effect import estimate_effect
+    from valeri_api.selfconfig.proposer import propose_from_dismissal
+
+    session, owner, signal, as_of = sc
+    segment = session.execute(
+        text("SELECT segment FROM core.customer WHERE id = :id"), {"id": signal.customer_id}
+    ).scalar()
+    assert segment, "the dismissed signal's customer must have a segment"
+
+    proposal = {
+        "rule_type": "suppress",
+        "scope": {"kind": "category", "rule": "customer_decline", "category": segment},
+        "description": f"Ne prijavljuj pad prometa za segment {segment} — sezonska djelatnost.",
+        "interpretation_confidence": 0.85,
+    }
+    fake = ProposerFakeLLMClient(proposal)
+    response = propose_from_dismissal(
+        session, signal.id, f"Svi iz segmenta {segment} su sezonski.", owner, client=fake
+    )
+    apply_rule(session, response.learned_rule.id, owner)
+
+    # The predicted blast radius, from SQL, before the rescan.
+    estimate = estimate_effect(
+        session, {"kind": "category", "rule": "customer_decline", "category": segment}
+    )
+    predicted = estimate.by_rule.get("customer_decline", 0)
+
+    # Re-scan: every decline signal of that segment must be suppressed, none open.
+    _clear_scan_state(session)
+    run_scan(session, as_of=as_of, recompute=False, create_tasks=True)
+
+    open_in_segment = session.execute(
+        text(
+            "SELECT COUNT(*) FROM app.signal s JOIN core.customer c ON c.id = s.customer_id "
+            "WHERE s.rule = 'customer_decline' AND c.segment = :segment "
+            "AND s.status IN ('new', 'tasked')"
+        ),
+        {"segment": segment},
+    ).scalar()
+    assert open_in_segment == 0, "a segment-scope rule must suppress the whole segment"
+
+    suppressed_in_segment = session.execute(
+        text(
+            "SELECT COUNT(*) FROM app.signal s JOIN core.customer c ON c.id = s.customer_id "
+            "WHERE s.rule = 'customer_decline' AND c.segment = :segment "
+            "AND s.status = 'suppressed'"
+        ),
+        {"segment": segment},
+    ).scalar()
+    assert suppressed_in_segment >= 1
+
+    # 6a: predicted (SQL estimate) == actual (what the engine suppressed).
+    assert predicted == suppressed_in_segment
+
+
 # ── 10. the API surface ───────────────────────────────────────────────────────
 
 
@@ -707,6 +806,115 @@ async def test_api_rbac(selfconfig_db, seed_data, monkeypatch) -> None:
         assert (await finance_client.get("/api/audit/decisions")).status_code == 200
         finance_apply = await finance_client.post("/api/rules/apply", json={"learned_rule_id": 1})
         assert finance_apply.status_code == 403
+        # M11: keep is owner/admin only too.
+        finance_keep = await finance_client.post("/api/learned-rules/1/keep")
+        assert finance_keep.status_code == 403
     finally:
         await rep_client.aclose()
         await finance_client.aclose()
+
+
+# ── 11. M11 API: origin + na provjeri + hit evidence + keep ───────────────────
+
+
+@pytest.mark.anyio
+async def test_api_learned_rules_origin_na_provjeri_and_keep(selfconfig_db, monkeypatch) -> None:
+    """The learned-rules API carries origin/na_provjeri/hit evidence; keep resolves a flag."""
+    from tests.fakes import AutoFakeLLMClient
+    from valeri_api.selfconfig.auditor import audit_suppressions
+
+    engine, _ = selfconfig_db
+    fake = ProposerFakeLLMClient(entity_proposal())
+    monkeypatch.setattr("valeri_api.llm.structured.get_llm_client", lambda: fake)
+
+    owner_client = make_client()
+    try:
+        await login(owner_client, OWNER_EMAIL)
+
+        # Dismiss a tasked decline signal → auto-applied entity rule (its origin).
+        with engine.connect() as conn:
+            signal = conn.execute(
+                text(
+                    "SELECT s.id, s.customer_id, c.name AS customer_name, "
+                    "       (s.evidence->>'ratio')::float AS ratio "
+                    "FROM app.signal s JOIN core.customer c ON c.id = s.customer_id "
+                    "WHERE s.rule = 'customer_decline' AND s.status = 'tasked' "
+                    "ORDER BY s.id LIMIT 1"
+                )
+            ).one()
+        dismissed = await owner_client.post(
+            f"/api/signals/{signal.id}/dismiss", json={"reason_text": "Sezonski kupac."}
+        )
+        assert dismissed.status_code == 200, dismissed.text
+        assert dismissed.json()["applied"] is True
+        rule_id = dismissed.json()["learned_rule"]["id"]
+
+        # Plant suppression activity + drift directly (committed — the API reads it).
+        with Session(engine) as session:
+            suppressed_id = session.execute(
+                text(
+                    "INSERT INTO app.signal "
+                    "(rule, customer_id, evidence, confidence, conf_band, register, status) "
+                    "SELECT rule, customer_id, "
+                    "       jsonb_set(evidence, '{ratio}', to_jsonb(CAST(:ratio AS text))), "
+                    "       confidence, conf_band, register, 'suppressed' "
+                    "FROM app.signal WHERE id = :src RETURNING id"
+                ),
+                {"src": signal.id, "ratio": f"{signal.ratio * 0.5:.4f}"},
+            ).scalar()
+            for _ in range(2):
+                session.execute(
+                    text(
+                        "INSERT INTO app.suppression_hit (learned_rule_id, signal_id) "
+                        "VALUES (:rid, :sid)"
+                    ),
+                    {"rid": rule_id, "sid": suppressed_id},
+                )
+            session.commit()
+
+        # The list carries the origin (rehydrated names) and no flag yet.
+        listing = await owner_client.get("/api/learned-rules")
+        item = next(i for i in listing.json()["items"] if i["id"] == rule_id)
+        assert item["source_customer_name"] == signal.customer_name
+        assert item["created_by_name"]
+        assert item["na_provjeri"] is False
+        assert item["suppression_count"] == 2
+
+        # The detail shows WHAT was hidden — the suppressed signal's evidence.
+        detail = await owner_client.get(f"/api/learned-rules/{rule_id}")
+        hits = detail.json()["hits"]
+        assert len(hits) == 2
+        assert hits[0]["customer_name"] == signal.customer_name
+        assert hits[0]["evidence"]["metric"] == "turnover_60d"
+        assert hits[0]["confidence"] is not None
+
+        # The auditor flags the drifted stream → na_provjeri flips on.
+        with Session(engine) as session:
+            result = audit_suppressions(session, client=AutoFakeLLMClient())
+            session.commit()
+        assert [r.learned_rule_id for r in result.flagged] == [rule_id]
+
+        flagged_item = next(
+            i
+            for i in (await owner_client.get("/api/learned-rules")).json()["items"]
+            if i["id"] == rule_id
+        )
+        assert flagged_item["na_provjeri"] is True
+
+        # Zadrži through the API resolves the flag (approval decision).
+        keep = await owner_client.post(f"/api/learned-rules/{rule_id}/keep")
+        assert keep.status_code == 200
+        assert keep.json()["decision"]["kind"] == "approval"
+
+        kept_item = next(
+            i
+            for i in (await owner_client.get("/api/learned-rules")).json()["items"]
+            if i["id"] == rule_id
+        )
+        assert kept_item["na_provjeri"] is False
+
+        # Keep again → 409 (nothing open to resolve).
+        again = await owner_client.post(f"/api/learned-rules/{rule_id}/keep")
+        assert again.status_code == 409
+    finally:
+        await owner_client.aclose()

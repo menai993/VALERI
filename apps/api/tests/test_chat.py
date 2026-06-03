@@ -487,15 +487,15 @@ def test_feedback_config_intent_proposes_real_rule(chat_session) -> None:
     assert session.execute(text("SELECT COUNT(*) FROM app.decision")).scalar() == 0
 
 
-def test_investigation_intent_replies_milestone_note(chat_session) -> None:
-    """The investigation stub still answers honestly with the M13 note."""
+def test_investigation_intent_creates_real_investigation(chat_session) -> None:
+    """M13: the investigation intent runs the REAL start_investigation tool."""
     session, owner, _, _ = chat_session
 
     investigation_fake = ChatFakeLLMClient(
         intent={
             "intent": "investigation",
             "tool": None,
-            "params": {"question": "Zašto pada promet?"},
+            "params": {"question": "Zašto pada promet u maju mjesecu?"},
             "confidence": 0.8,
         }
     )
@@ -503,7 +503,22 @@ def test_investigation_intent_replies_milestone_note(chat_session) -> None:
     events = handle_message(
         session, owner, conversation, "Istraži zašto pada promet u maju", client=investigation_fake
     )
-    assert "M13" in _reply_text(events)
+
+    # The reply confirms the investigation is running in the background.
+    reply = _reply_text(events)
+    assert "Istraga #" in reply
+    assert "pozadini" in reply
+
+    # The inline card links to it (the UI routes to AI Report → Istrage).
+    card = next(event for event in events if event.type == "card")
+    assert card.data["card_type"] == "investigation"
+    investigation_id = card.data["payload"]["investigation_id"]
+
+    # The investigation is queued in the DB (the worker will pick it up).
+    status = session.execute(
+        text("SELECT status FROM app.investigation WHERE id = :id"), {"id": investigation_id}
+    ).scalar()
+    assert status == "queued"
 
 
 # ── 8/9. the API: SSE + session memory (monkeypatched gateway) ────────────────

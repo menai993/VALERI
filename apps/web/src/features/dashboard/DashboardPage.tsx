@@ -28,7 +28,7 @@ import { StatCard } from "@/components/widgets/StatCard"
 import { SubStatStrip } from "@/components/widgets/SubStatStrip"
 import { useDashboard } from "@/lib/api/queries"
 import type { AtRiskRow, InsightRow, KpiTile, LostArticleRow } from "@/lib/api/types"
-import { formatDate, formatMoney } from "@/lib/format"
+import { formatDate, formatMoney, formatPercent } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 
 function SectionCard({
@@ -198,6 +198,30 @@ export function DashboardPage() {
                 ))}
               </div>
             )}
+
+            {/* M11: what learned rules recently hid — quiet transparency, never silent */}
+            {data && data.recently_suppressed.length > 0 && (
+              <div
+                className="flex flex-col gap-1 border-t pt-3"
+                data-testid="recently-suppressed"
+              >
+                <span className="text-[11.5px] font-medium uppercase text-text-3">
+                  {t.dashboard.recently_suppressed.title}
+                </span>
+                {data.recently_suppressed.slice(0, 5).map((row) => (
+                  <span key={row.hit_id} className="truncate text-xs text-text-3">
+                    {row.customer_name ? `${row.customer_name} · ` : ""}
+                    {row.description}
+                  </span>
+                ))}
+                <Link
+                  to="/ai-report"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {t.dashboard.recently_suppressed.view_rules}
+                </Link>
+              </div>
+            )}
           </SectionCard>
         </div>
       </div>
@@ -238,6 +262,61 @@ export function DashboardPage() {
           )}
         </SectionCard>
       </div>
+
+      {/* Row 4b: the CRM pipeline (C-CRM1) — real Otvorene prilike / Stopa konverzije /
+          Najveće prilike; rendered only when the CRM track is in use (never fake). */}
+      {data?.opportunities && (
+        <SectionCard title={t.dashboard.prilike.title}>
+          <div className="flex flex-col gap-4">
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}
+            >
+              <div className="flex flex-col gap-1" data-testid="prilike-open-count">
+                <span className="text-sm text-text-2">{t.dashboard.prilike.open_count}</span>
+                <span className="tnum text-[24px] font-bold text-text">
+                  {data.opportunities.open_count}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1" data-testid="prilike-conversion">
+                <span className="text-sm text-text-2">{t.dashboard.prilike.conversion}</span>
+                <span className="tnum text-[24px] font-bold text-text">
+                  {formatPercent(Number(data.opportunities.conversion_rate) * 100)}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1" data-testid="prilike-weighted">
+                <span className="text-sm text-text-2">{t.dashboard.prilike.weighted_value}</span>
+                <span className="tnum text-[24px] font-bold text-text">
+                  {formatMoney(data.opportunities.weighted_value)}
+                </span>
+              </div>
+            </div>
+
+            {data.opportunities.top.length > 0 && (
+              <div className="flex flex-col gap-1 border-t pt-3" data-testid="prilike-top">
+                <span className="text-[11.5px] font-medium uppercase text-text-3">
+                  {t.dashboard.prilike.top}
+                </span>
+                {data.opportunities.top.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate text-text-2">
+                      {row.title}
+                      {row.customer_name ? ` · ${row.customer_name}` : ""}
+                    </span>
+                    <span className="tnum shrink-0 font-medium text-text">
+                      {formatMoney(row.weighted_value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Link to="/prilike" className="text-sm font-medium text-primary hover:underline">
+              {t.dashboard.prilike.view_all}
+            </Link>
+          </div>
+        </SectionCard>
+      )}
 
       {/* Row 5: 6/6 — rep activity (Phase 2 placeholder) | owner report summary */}
       <div className="grid gap-4 lg:grid-cols-2">

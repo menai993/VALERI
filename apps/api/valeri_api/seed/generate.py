@@ -6,6 +6,7 @@ from valeri_api.seed.articles import generate_articles, generate_categories, sel
 from valeri_api.seed.config import SeedConfig
 from valeri_api.seed.entities import generate_contacts, generate_entities, generate_reps
 from valeri_api.seed.invoices import build_baskets, generate_invoices
+from valeri_api.seed.opportunities import generate_opportunities
 from valeri_api.seed.planted import (
     build_manifest,
     select_lost_articles,
@@ -44,7 +45,12 @@ def generate(config: SeedConfig) -> SeedData:
     # 5. Application logins (M8): owner/admin/finance + one per rep.
     app_users = generate_users(sales_reps)
 
-    # 6. Ground-truth manifest (measured from the generated data).
+    # 6. Phase-2 CRM (C-CRM1): demo opportunities + their initial stage history.
+    opportunities, opportunity_stage_history = generate_opportunities(
+        rng, customers, customer_reps, config.as_of
+    )
+
+    # 7. Ground-truth manifest (measured from the generated data).
     manifest = build_manifest(config, plan, customers, invoices, invoice_lines)
 
     return SeedData(
@@ -60,4 +66,6 @@ def generate(config: SeedConfig) -> SeedData:
         invoice_lines=invoice_lines,
         manifest=manifest,
         app_users=app_users,
+        opportunities=opportunities,
+        opportunity_stage_history=opportunity_stage_history,
     )

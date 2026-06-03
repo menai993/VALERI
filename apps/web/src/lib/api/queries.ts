@@ -16,13 +16,23 @@ import type {
   CustomerDetail,
   CustomerRow,
   DashboardResponse,
+  Decision,
   DismissResponse,
+  Investigation,
+  InvestigationDetail,
   Items,
+  LearnedRule,
+  LearnedRuleDetail,
+  LlmSettings,
+  LlmSettingsPatch,
   LostArticleRow,
+  Opportunity,
+  PipelineResponse,
   OwnerReport,
   OwnerReportSummary,
   Paginated,
   RuleConfigEntry,
+  RuleScope,
   SignalRow,
   TaskRow,
   User,
@@ -210,6 +220,56 @@ export function useApplyRuleMutation() {
   })
 }
 
+// ── learned rules + decisions (M11: "Šta je VALERI naučio") ───────────────────
+
+export function useLearnedRules(status?: string) {
+  return useQuery<Items<LearnedRule>>({
+    queryKey: ["learnedRules", status],
+    queryFn: () => api.get<Items<LearnedRule>>("/api/learned-rules", { status }),
+  })
+}
+
+export function useLearnedRuleDetail(ruleId: number | null) {
+  return useQuery<LearnedRuleDetail>({
+    queryKey: ["learnedRules", "detail", ruleId],
+    queryFn: () => api.get<LearnedRuleDetail>(`/api/learned-rules/${ruleId}`),
+    enabled: ruleId !== null,
+  })
+}
+
+export function useDecisions(kind?: string) {
+  return useQuery<Items<Decision>>({
+    queryKey: ["decisions", kind],
+    queryFn: () => api.get<Items<Decision>>("/api/audit/decisions", { kind }),
+  })
+}
+
+/** Edit a rule's scope (writes a reversible decision). */
+export function useEditScopeMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ruleId, scope }: { ruleId: number; scope: RuleScope }) =>
+      api.patch<ApplyResponse>(`/api/learned-rules/${ruleId}/scope`, { scope }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+/** Zadrži (M11): resolve a Na provjeri flag by keeping the rule (approval decision). */
+export function useKeepRuleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (learnedRuleId: number) =>
+      api.post<ApplyResponse>(`/api/learned-rules/${learnedRuleId}/keep`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["learnedRules"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
 /** Undo a learned rule (status → reverted, writes a new decision). */
 export function useUndoRuleMutation() {
   const queryClient = useQueryClient()
@@ -275,6 +335,127 @@ export function useRuleConfig() {
     queryKey: ["settings", "rule-config"],
     queryFn: () => api.get<Items<RuleConfigEntry>>("/api/settings/rule-config"),
     retry: false,
+  })
+}
+
+// ── opportunities / CRM (C-CRM1) ──────────────────────────────────────────────
+
+export function useOpportunities(stage?: string) {
+  return useQuery<Items<Opportunity>>({
+    queryKey: ["opportunities", stage],
+    queryFn: () => api.get<Items<Opportunity>>("/api/opportunities", { stage }),
+    retry: false,
+  })
+}
+
+export function usePipeline() {
+  return useQuery<PipelineResponse>({
+    queryKey: ["opportunities", "pipeline"],
+    queryFn: () => api.get<PipelineResponse>("/api/opportunities/pipeline"),
+    retry: false,
+  })
+}
+
+export function useCreateOpportunity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      customer_id: number
+      title: string
+      value?: number
+      probability?: number
+      stage?: string
+      source?: string
+      expected_close?: string
+    }) => api.post<Opportunity>("/api/opportunities", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opportunities"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+export function useUpdateOpportunity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: number; changes: Record<string, unknown> }) =>
+      api.patch<Opportunity>(`/api/opportunities/${id}`, changes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opportunities"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+// ── investigations (M13) ──────────────────────────────────────────────────────
+
+export function useInvestigations(status?: string) {
+  return useQuery<Items<Investigation>>({
+    queryKey: ["investigations", status],
+    queryFn: () => api.get<Items<Investigation>>("/api/investigations", { status }),
+    retry: false,
+  })
+}
+
+export function useInvestigation(investigationId: number | null) {
+  return useQuery<InvestigationDetail>({
+    queryKey: ["investigations", "detail", investigationId],
+    queryFn: () => api.get<InvestigationDetail>(`/api/investigations/${investigationId}`),
+    enabled: investigationId !== null,
+    // Poll while the worker is processing it (queued/running → live progress).
+    refetchInterval: (query) => {
+      const status = query.state.data?.investigation.status
+      return status === "queued" || status === "running" ? 3000 : false
+    },
+  })
+}
+
+export function useCreateInvestigation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { question: string; signal_id?: number }) =>
+      api.post<{ investigation_id: number; status: string }>("/api/investigations", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["investigations"] }),
+  })
+}
+
+export function useResumeInvestigation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      investigationId,
+      decision,
+    }: {
+      investigationId: number
+      decision: "approve" | "reject"
+    }) => api.post(`/api/investigations/${investigationId}/resume`, { decision }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["investigations"] })
+      // Approved actions may have created tasks.
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+// ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+export function useLlmSettings() {
+  return useQuery<LlmSettings>({
+    queryKey: ["settings", "llm"],
+    queryFn: () => api.get<LlmSettings>("/api/settings/llm"),
+    retry: false,
+  })
+}
+
+export function usePatchLlmSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: LlmSettingsPatch) => api.patch<LlmSettings>("/api/settings/llm", patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "llm"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
   })
 }
 

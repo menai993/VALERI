@@ -102,6 +102,7 @@ def propose_from_dismissal(
             client=client,
             text_field="description",
             register="preporuka",
+            role="nl_rule",  # M12: Tier-1 by role
         )
     except NarrationFailed as failure:
         raise ProposalFailed(
@@ -256,6 +257,7 @@ def propose_from_text(
             client=client,
             text_field="description",
             register="preporuka",
+            role="nl_rule",  # M12: Tier-1 by role
         )
     except NarrationFailed as failure:
         raise ProposalFailed(

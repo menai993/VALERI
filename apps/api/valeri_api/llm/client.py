@@ -35,8 +35,10 @@ class LLMUnavailable(Exception):
 class LiteLLMClient:
     """The production client: OpenAI-compatible chat completions via LiteLLM.
 
-    The model name is a LiteLLM alias ("tier1" → Claude Haiku 4.5 per
-    infra/litellm.config.yaml); swapping the underlying model is config-only.
+    The model name is a LiteLLM alias ("tier1"/"tier2"/"tier2_strong" → the Claude
+    models in infra/litellm.config.yaml); swapping the underlying model is
+    config-only. Stable system prompts are marked cacheable (M12 cost lever) —
+    LiteLLM forwards the Anthropic cache_control block.
     """
 
     def __init__(
@@ -48,20 +50,37 @@ class LiteLLMClient:
         settings = get_settings()
         self._base_url = base_url or settings.litellm_base_url
         self._api_key = api_key or settings.litellm_master_key
-        self.model = model or settings.llm_tier1_model
+        self.model = model or settings.llm_tier1_alias
+
+    def _build_messages(self, system: str, user: str, cache_system: bool) -> list[dict]:
+        """The chat payload; with caching, the system prompt carries cache_control.
+
+        Anthropic caches prompt prefixes above its minimum token count and silently
+        ignores the marker below it — marking is always safe.
+        """
+        if cache_system:
+            system_message = {
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+                ],
+            }
+        else:
+            system_message = {"role": "system", "content": system}
+        return [system_message, {"role": "user", "content": user}]
 
     def complete(self, system: str, user: str) -> LLMResponse:
         from openai import OpenAI, OpenAIError
 
+        settings = get_settings()
         client = OpenAI(base_url=self._base_url, api_key=self._api_key or "unused", timeout=60)
         started = time.monotonic()
         try:
             response = client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                messages=self._build_messages(
+                    system, user, cache_system=settings.llm_prompt_cache_enabled
+                ),
                 temperature=0.2,
             )
         except OpenAIError as error:
@@ -77,6 +96,16 @@ class LiteLLMClient:
         )
 
 
-def get_llm_client() -> LiteLLMClient:
-    """The default production client (Tier-1 narration model)."""
-    return LiteLLMClient()
+def get_llm_client(tier: str = "tier1") -> LiteLLMClient:
+    """A production client for one tier (default: Tier-1).
+
+    Kept for backward compatibility and non-routed utility use; routed code paths
+    go through llm.router (which picks the tier from the task role).
+    """
+    settings = get_settings()
+    tier_models = {
+        "tier1": settings.llm_tier1_alias,
+        "tier2": settings.llm_tier2_alias,
+        "tier2_strong": settings.llm_tier2_strong_alias,
+    }
+    return LiteLLMClient(model=tier_models.get(tier, settings.llm_tier1_alias))

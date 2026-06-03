@@ -166,12 +166,17 @@ def test_rescan_does_not_duplicate(scanned_db, seed_data) -> None:
 
 
 def test_scheduler_has_daily_and_weekly_jobs() -> None:
-    """The worker's APScheduler runs a daily and a weekly scan."""
+    """The worker runs the daily scan, weekly cycle, M11 audit and M13 investigation poll."""
     from valeri_api.scanner.scheduler import create_scheduler
 
     scheduler = create_scheduler()
     job_ids = {job.id for job in scheduler.get_jobs()}
-    assert job_ids == {"daily_scan", "weekly_scan"}
+    assert job_ids == {
+        "daily_scan",
+        "weekly_scan",
+        "over_suppression_audit",
+        "investigation_poll",
+    }
 
 
 # ── learned-rule suppression (the M4 hook; learned rules are written in M10) ──
@@ -255,5 +260,11 @@ def test_hand_inserted_learned_rule_suppresses_the_right_signal(db_engine, seed_
         }
         assert suppressed_customer in open_after_expiry, "expired suppression still active"
         assert rescan.total_inserted >= 1
+        # M11: expiry is a visible lifecycle transition, not a silent filter.
+        with db_engine.connect() as conn:
+            expired_status = conn.execute(
+                text("SELECT status FROM app.learned_rule ORDER BY id LIMIT 1")
+            ).scalar()
+        assert expired_status == "expired"
     finally:
         _restore_seed(db_engine, seed_data)

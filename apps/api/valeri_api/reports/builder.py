@@ -135,7 +135,7 @@ def build_weekly_report(
         _lost_article_section(session, lost, narration_active, client),
         _sleeping_section(session, sleeping, narration_active, client),
         _tasks_section(session, task_stats, top_tasks, narration_active, client),
-        _suppressed_placeholder_section(),
+        _suppressed_section(session, week_start, week_end),
         _drafts_section(pending_drafts),
     ]
 
@@ -216,6 +216,7 @@ def _narrate_or_template(
                 system_prompt=REPORT_SYSTEM_PROMPT,
                 instruction=instruction,
                 client=client,
+                role="report_narration",  # M12: Tier-1 by role
             )
             return rehydrate(narrative.text, context), "llm"
         except NarrationFailed as failure:
@@ -395,15 +396,66 @@ def _tasks_section(
     return _section("zadaci_sedmice", "Zadaci sedmice", "preporuka", narrative, source, data)
 
 
-def _suppressed_placeholder_section() -> dict[str, Any]:
-    """⑥ Nedavno potisnuto — empty placeholder until the M11 learning loop."""
+def _suppressed_section(
+    session: Session, week_start: datetime.date, week_end: datetime.date
+) -> dict[str, Any]:
+    """⑥ Nedavno potisnuto — what learned rules hid this week + open Na provjeri flags.
+
+    Template-only narrative: this is a counting summary of suppression activity —
+    the SQL numbers ARE the message, so no LLM call is spent here (cost lever).
+    """
+    rows = [
+        dict(row)
+        for row in session.execute(
+            text(
+                "SELECT lr.id AS learned_rule_id, lr.description, lr.status, "
+                "       s.rule, c.name AS customer_name, COUNT(h.id) AS hits "
+                "FROM app.suppression_hit h "
+                "JOIN app.learned_rule lr ON lr.id = h.learned_rule_id "
+                "LEFT JOIN app.signal s ON s.id = h.signal_id "
+                "LEFT JOIN core.customer c ON c.id = s.customer_id "
+                "WHERE h.suppressed_at >= :week_start "
+                "  AND h.suppressed_at < CAST(:week_end AS date) + 1 "
+                "GROUP BY lr.id, lr.description, lr.status, s.rule, c.name "
+                "ORDER BY COUNT(h.id) DESC"
+            ),
+            {"week_start": week_start, "week_end": week_end},
+        ).mappings()
+    ]
+
+    # Rules with an open Na provjeri flag (raised by the auditor, not yet resolved).
+    na_provjeri_count = session.execute(
+        text(
+            "SELECT COUNT(DISTINCT d.payload->>'learned_rule_id') FROM app.decision d "
+            "WHERE d.kind = 'reactivation' AND (d.payload->>'review')::boolean "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM app.decision r "
+            "  WHERE r.id > d.id AND r.kind IN ('approval', 'undo') "
+            "  AND r.payload->>'learned_rule_id' = d.payload->>'learned_rule_id')"
+        )
+    ).scalar()
+
+    total_hits = sum(row["hits"] for row in rows)
+    data = {
+        "items": jsonable(rows),
+        "total_hits": total_hits,
+        "na_provjeri_count": na_provjeri_count,
+    }
+
+    if not rows:
+        narrative = "Nema potisnutih signala ove sedmice."
+    else:
+        narrative = (
+            f"Ove sedmice VALERI je potisnuo {total_hits} signala po {len(rows)} "
+            f"naučenih pravila — detalji su u kartici 'Šta je VALERI naučio'."
+        )
+    if na_provjeri_count:
+        narrative += (
+            f" Na provjeri: {na_provjeri_count} — potisnuti obrazac se značajno promijenio."
+        )
+
     return _section(
-        "nedavno_potisnuto",
-        "Nedavno potisnuto",
-        "analiza",
-        "Nema potisnutih signala — VALERI još nema naučenih pravila za potiskivanje.",
-        "template",
-        {"items": [], "placeholder": True},
+        "nedavno_potisnuto", "Nedavno potisnuto", "analiza", narrative, "template", data
     )
 
 

@@ -132,6 +132,7 @@ export interface DashboardResponse {
   rep_activity: null
   owner_report_summary: OwnerReportSummary | null
   recently_suppressed: RecentlySuppressedRow[]
+  opportunities: OpportunitySummary | null // C-CRM1: the Prilike block (null until used)
 }
 
 // ── customers ─────────────────────────────────────────────────────────────────
@@ -386,6 +387,57 @@ export interface ApplyResponse {
   learned_rule: LearnedRule
   decision: Decision
   register: "akcija"
+}
+
+// ── opportunities / CRM (C-CRM1) ──────────────────────────────────────────────
+
+export type OppStage = "lead" | "qualified" | "proposal" | "negotiation" | "won" | "lost"
+
+export interface Opportunity {
+  id: number
+  customer_id: number
+  customer_name: string | null
+  title: string
+  value: string | null
+  probability: string | null
+  stage: OppStage
+  source: string | null
+  expected_close: string | null
+  owner_rep_id: number | null
+  owner_rep_name: string | null
+  effective_probability: string | null
+  weighted_value: string | null
+  created_at: string
+}
+
+export interface PipelineStageColumn {
+  stage: OppStage
+  count: number
+  value: string
+  weighted_value: string
+  opportunities: Opportunity[]
+}
+
+export interface PipelineResponse {
+  stages: PipelineStageColumn[]
+  total_weighted_value: string
+  conversion_rate: string
+  open_count: number
+}
+
+/** The dashboard 'Prilike' block (Otvorene prilike / Stopa konverzije / Najveće prilike). */
+export interface OpportunitySummary {
+  open_count: number
+  conversion_rate: string
+  weighted_value: string
+  top: {
+    id: number
+    title: string
+    customer_name: string | null
+    value: string | null
+    probability: string | null
+    weighted_value: string
+  }[]
 }
 
 // ── investigations (M13) ──────────────────────────────────────────────────────

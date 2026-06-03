@@ -241,7 +241,19 @@ def assemble_dashboard(
         rep_activity=None,
         owner_report_summary=owner_report_summary,
         recently_suppressed=recently_suppressed_rows(session),
+        opportunities=_opportunities_summary(session),
     )
+
+
+def _opportunities_summary(session: Session) -> dict[str, Any] | None:
+    """C-CRM1: the dashboard's Prilike block — None when no opportunities exist yet."""
+    from valeri_api.crm.service import dashboard_summary
+
+    has_any = session.execute(text("SELECT EXISTS (SELECT 1 FROM app.opportunity)")).scalar()
+    if not has_any:
+        return None  # CRM track not in use → honest empty, not fake pipeline data
+    # The dashboard is owner/admin/finance only — unrestricted scope.
+    return dashboard_summary(session, customer_ids=None).model_dump(mode="json")
 
 
 def resolve_range(range_key: str | None) -> int:

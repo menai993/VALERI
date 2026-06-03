@@ -26,6 +26,8 @@ import type {
   LlmSettings,
   LlmSettingsPatch,
   LostArticleRow,
+  Opportunity,
+  PipelineResponse,
   OwnerReport,
   OwnerReportSummary,
   Paginated,
@@ -333,6 +335,55 @@ export function useRuleConfig() {
     queryKey: ["settings", "rule-config"],
     queryFn: () => api.get<Items<RuleConfigEntry>>("/api/settings/rule-config"),
     retry: false,
+  })
+}
+
+// ── opportunities / CRM (C-CRM1) ──────────────────────────────────────────────
+
+export function useOpportunities(stage?: string) {
+  return useQuery<Items<Opportunity>>({
+    queryKey: ["opportunities", stage],
+    queryFn: () => api.get<Items<Opportunity>>("/api/opportunities", { stage }),
+    retry: false,
+  })
+}
+
+export function usePipeline() {
+  return useQuery<PipelineResponse>({
+    queryKey: ["opportunities", "pipeline"],
+    queryFn: () => api.get<PipelineResponse>("/api/opportunities/pipeline"),
+    retry: false,
+  })
+}
+
+export function useCreateOpportunity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      customer_id: number
+      title: string
+      value?: number
+      probability?: number
+      stage?: string
+      source?: string
+      expected_close?: string
+    }) => api.post<Opportunity>("/api/opportunities", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opportunities"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+export function useUpdateOpportunity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: number; changes: Record<string, unknown> }) =>
+      api.patch<Opportunity>(`/api/opportunities/${id}`, changes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opportunities"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
   })
 }
 

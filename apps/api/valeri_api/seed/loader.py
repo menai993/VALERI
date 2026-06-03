@@ -4,6 +4,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.models import AppUser
+from valeri_api.crm.models import Opportunity, OpportunityStageHistory
 from valeri_api.domain.models import (
     Article,
     ArticleAlias,
@@ -31,6 +32,8 @@ _INSERT_ORDER = [
     (Invoice, "invoices"),
     (InvoiceLine, "invoice_lines"),
     (AppUser, "app_users"),
+    (Opportunity, "opportunities"),
+    (OpportunityStageHistory, "opportunity_stage_history"),
 ]
 
 # Tables whose identity sequence must be advanced past the explicit seed IDs.
@@ -44,9 +47,13 @@ _SEQUENCE_TABLES = [
     "core.invoice",
     "core.invoice_line",
     "app.app_user",
+    "app.opportunity",
+    "app.opportunity_stage_history",
 ]
 
 _ALL_TABLES = [
+    "app.opportunity_stage_history",
+    "app.opportunity",
     "app.app_user",
     "core.invoice_line",
     "core.invoice",

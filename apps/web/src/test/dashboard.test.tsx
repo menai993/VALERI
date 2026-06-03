@@ -104,6 +104,7 @@ const dashboardFixture: DashboardResponse = {
     ],
   },
   recently_suppressed: [],
+  opportunities: null,
 }
 
 function renderDashboard() {

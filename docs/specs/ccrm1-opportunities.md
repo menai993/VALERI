@@ -1,6 +1,6 @@
 # Spec — C-CRM1: Opportunity model & pipeline
 
-**Track:** Phase-2 CRM (optional, owner-approved) · **Builds on:** M1 (customers/reps), M8 (auth/RBAC, dashboard), M14 (the complete system) · **Status:** approved (D1–D7 defaults OK'd by owner, 2026-06-03)
+**Track:** Phase-2 CRM (optional, owner-approved) · **Builds on:** M1 (customers/reps), M8 (auth/RBAC, dashboard), M14 (the complete system) · **Status:** implemented (11 opportunity + 1 dashboard backend tests, 3 web tests; full backend 262 + web 59 green, 2026-06-03)
 
 ## 1. Objective
 

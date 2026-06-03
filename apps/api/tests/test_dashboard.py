@@ -181,9 +181,59 @@ async def test_dashboard_envelope_on_every_ai_row(dashboard_payload) -> None:
         assert bullet["register"] in ("analiza", "preporuka", "akcija")
 
     # Phase-2 placeholders are explicit, never fake data.
-    assert body["rep_activity"] is None
+    assert body["rep_activity"] is None  # rep activity is still C-CRM2
     # M11: no learned rules in this fixture → the suppressed list is honestly empty.
     assert body["recently_suppressed"] == []
+
+
+@pytest.mark.anyio
+async def test_dashboard_opportunities_block(dashboard_payload) -> None:
+    """C-CRM1: the Prilike block replaces the placeholder + every number equals SQL."""
+    engine, body = dashboard_payload
+    opportunities = body["opportunities"]
+    assert opportunities is not None, "the seed plants opportunities → block is not null"
+
+    from decimal import Decimal
+
+    with engine.connect() as conn:
+        defaults = conn.execute(
+            text("SELECT value FROM app.rule_config WHERE rule='crm' AND param='stage_probability'")
+        ).scalar()
+        defaults = {stage: Decimal(str(p)) for stage, p in defaults.items()}
+        open_rows = conn.execute(
+            text(
+                "SELECT value, probability, stage FROM app.opportunity "
+                "WHERE stage IN ('lead','qualified','proposal','negotiation') AND value IS NOT NULL"
+            )
+        ).all()
+        won = conn.execute(text("SELECT COUNT(*) FROM app.opportunity WHERE stage='won'")).scalar()
+        closed = conn.execute(
+            text("SELECT COUNT(*) FROM app.opportunity WHERE stage IN ('won','lost')")
+        ).scalar()
+        open_count = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM app.opportunity "
+                "WHERE stage IN ('lead','qualified','proposal','negotiation')"
+            )
+        ).scalar()
+
+    weighted = sum(
+        (r.value * (r.probability if r.probability is not None else defaults[r.stage])).quantize(
+            Decimal("0.01")
+        )
+        for r in open_rows
+    ).quantize(Decimal("0.01"))
+
+    assert opportunities["open_count"] == open_count
+    assert Decimal(opportunities["weighted_value"]) == weighted
+    expected_conv = (
+        (Decimal(won) / Decimal(closed)).quantize(Decimal("0.0001"))
+        if closed
+        else Decimal("0.0000")
+    )
+    assert Decimal(opportunities["conversion_rate"]).quantize(Decimal("0.0001")) == expected_conv
+    # Top deals are sorted by weighted value (the strongest first).
+    assert len(opportunities["top"]) <= 5
 
 
 @pytest.mark.anyio

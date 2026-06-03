@@ -137,3 +137,6 @@ class DashboardResponse(BaseModel):
     rep_activity: None = None  # Phase 2 placeholder — never fake data
     owner_report_summary: dict[str, Any] | None = None  # M7 extract_summary payload
     recently_suppressed: list[RecentlySuppressedRow] = []  # M11: the self-config audit trail
+    # C-CRM1: the opportunity pipeline summary (Otvorene prilike / Stopa konverzije /
+    # Najveće prilike) — None when the CRM track is not in use (no opportunities).
+    opportunities: dict[str, Any] | None = None

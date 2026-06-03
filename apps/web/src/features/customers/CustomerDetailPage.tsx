@@ -8,8 +8,12 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardState"
 import { ComboChart } from "@/components/widgets/ComboChart"
+import { ConfidenceLabel } from "@/components/widgets/ConfidenceLabel"
+import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
+import { RegisterChip } from "@/components/widgets/RegisterChip"
 import { RiskBadge } from "@/components/widgets/RiskBadge"
 import { useCustomer } from "@/lib/api/queries"
+import type { ConfBand, Register } from "@/lib/api/types"
 import { formatDate, formatMoney, formatNumber } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 
@@ -126,21 +130,29 @@ export function CustomerDetailPage() {
         </Card>
       </div>
 
-      {/* Signals + tasks for this customer */}
+      {/* Signals + tasks for this customer — AI surfaces: every row carries
+          register + confidence + evidence (principles 2/3/9). */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="flex flex-col gap-3 p-5">
           <h2 className="text-[17px] font-semibold text-text">{t.customers.detail.signals}</h2>
           {data.signals.length === 0 && <EmptyState />}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {data.signals.map((signal) => (
               <div
                 key={String(signal.id)}
-                className="flex items-center justify-between border-b border-border pb-2 text-sm last:border-0"
+                className="flex flex-col gap-1 border-b border-border pb-3 text-sm last:border-0"
               >
-                <span className="text-text-2">
-                  {t.rules[signal.rule as keyof typeof t.rules] ?? String(signal.rule)}
-                </span>
-                <Badge>{String(signal.status)}</Badge>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <RegisterChip register={signal.register as Register} />
+                    <span className="font-medium text-text">
+                      {t.rules[signal.rule as keyof typeof t.rules] ?? String(signal.rule)}
+                    </span>
+                  </div>
+                  <Badge>{String(signal.status)}</Badge>
+                </div>
+                <ConfidenceLabel band={signal.conf_band as ConfBand} />
+                <EvidenceExpander evidence={signal.evidence as Record<string, unknown>} />
               </div>
             ))}
           </div>
@@ -155,7 +167,10 @@ export function CustomerDetailPage() {
                 key={String(task.id)}
                 className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0"
               >
-                <span className="truncate text-text-2">{String(task.title)}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <RegisterChip register={task.register as Register} className="shrink-0" />
+                  <span className="truncate text-text-2">{String(task.title)}</span>
+                </div>
                 <Badge>{t.tasks.status[task.status as keyof typeof t.tasks.status]}</Badge>
               </div>
             ))}

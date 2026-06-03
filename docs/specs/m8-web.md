@@ -2,6 +2,11 @@
 
 **Milestone:** M8 · **Builds on:** M7 (all dashboard data exists: metrics, signals, tasks, owner report) · **Status:** awaiting owner review
 
+> Re-verified against the doc set updated 2026-06-03 (new CLAUDE.md conventions, architecture §8
+> language policy, VALERI-IMPLEMENTATION-PLAN.md): the M8 milestone scope is unchanged. The
+> Bosnian-first UI + EN toggle in this spec satisfies the §8 UI requirement; the per-user
+> `preferred_language` column is covered by D8 below (the full LLM-side enforcement is milestone X2).
+
 ## 1. Objective
 
 Give the owner the **Početna command dashboard** — the screen that replaces opening the ERP:
@@ -244,6 +249,7 @@ Numbers in every response are SQL values passed through; the API returns no LLM-
 | **D5** | **Frontend test depth**: vitest + RTL for trust-critical widgets + dashboard assembly + formatters + i18n (16 tests total), not full E2E (Playwright deferred to M14 hardening). | as stated |
 | **D6** | **Tailwind v4 note**: M0 pinned Tailwind v4 (CSS-first `@theme`, no `tailwind.config.ts`). frontend-spec §2 wording predates this; tokens stay in `src/index.css` exactly as M0 declared them. Same semantics, different file. | accept (no config file) |
 | **D7** | **Dashboard date range**: DateRangePicker offers presets (30d / 90d / 12m) passed as `?range=` to /dashboard and /metrics/overview; default 30d. Custom from–to ranges deferred. | as stated |
+| **D8** | **`app_user.preferred_language`** (architecture §8): since M8 creates the `app.app_user` table anyway, include the column now (`TEXT NOT NULL DEFAULT 'bs'`) so X2 doesn't need a second migration on the same table. M8 only stores it; LLM-side enforcement ("respond in {preferred_language}") is X2. | include the column now |
 
 ---
 *After approval: Plan Mode (file-by-file implementation order), then implementation with TDD on RBAC + dashboard numbers, then principle-reviewer.*

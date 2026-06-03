@@ -86,9 +86,12 @@ CREATE TABLE core.invoice (
   id          BIGSERIAL PRIMARY KEY,
   customer_id BIGINT NOT NULL REFERENCES core.customer(id),
   date        DATE NOT NULL,
-  total       NUMERIC(14,2) NOT NULL DEFAULT 0
+  total       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  external_no TEXT                                  -- invoice number in the source ERP (broj fakture);
+                                                    -- natural key for idempotent imports (M2)
 );
 CREATE INDEX ix_invoice_customer_date ON core.invoice(customer_id, date);
+CREATE UNIQUE INDEX ux_invoice_external_no ON core.invoice(external_no) WHERE external_no IS NOT NULL;
 
 CREATE TABLE core.invoice_line (
   id          BIGSERIAL PRIMARY KEY,
@@ -129,6 +132,34 @@ CREATE TABLE core.segment_basket (
   prevalence   NUMERIC(5,4),                        -- share of segment customers buying this category
   PRIMARY KEY (segment, category_id)
 );
+```
+
+## staging — raw ERP imports (M2)
+
+`staging.*` mirrors the source export columns; every imported row is kept raw (all TEXT)
+and tagged with its import run for traceability. The ingest layer maps staging → core by
+natural keys (JIB, customer/article codes, invoice numbers) — never by internal IDs.
+
+```sql
+CREATE TABLE staging.import_run (
+  id          BIGSERIAL PRIMARY KEY,
+  source      TEXT NOT NULL,                        -- api / cli / path
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  status      TEXT NOT NULL DEFAULT 'running',      -- running/completed/failed
+  stats       JSONB,                                -- per-entity created/updated/unchanged counts
+  report      JSONB                                 -- the data-quality report
+);
+
+-- Raw export rows (payload columns are TEXT, one table per export file):
+CREATE TABLE staging.kupci   ( id BIGSERIAL PRIMARY KEY, import_run_id BIGINT NOT NULL REFERENCES staging.import_run(id), row_no INT NOT NULL,
+                               sifra TEXT, naziv TEXT, jib TEXT, naziv_pravnog_lica TEXT, segment TEXT, status TEXT, komercijalista TEXT );
+CREATE TABLE staging.artikli ( id BIGSERIAL PRIMARY KEY, import_run_id BIGINT NOT NULL REFERENCES staging.import_run(id), row_no INT NOT NULL,
+                               sifra TEXT, naziv TEXT, kategorija TEXT, aktivan TEXT );
+CREATE TABLE staging.fakture ( id BIGSERIAL PRIMARY KEY, import_run_id BIGINT NOT NULL REFERENCES staging.import_run(id), row_no INT NOT NULL,
+                               broj_fakture TEXT, sifra_kupca TEXT, datum TEXT, ukupno TEXT );
+CREATE TABLE staging.stavke  ( id BIGSERIAL PRIMARY KEY, import_run_id BIGINT NOT NULL REFERENCES staging.import_run(id), row_no INT NOT NULL,
+                               broj_fakture TEXT, sifra_artikla TEXT, kolicina TEXT, cijena TEXT, iznos TEXT );
 ```
 
 ## app — governance, pipeline, learning, conversation, investigation
@@ -193,8 +224,18 @@ CREATE TABLE app.approval (                          -- M7; gates customer-facin
   task_id     BIGINT REFERENCES app.task(id),
   kind        TEXT NOT NULL,                         -- offer/message/...
   status      appr_status NOT NULL DEFAULT 'draft',
+  payload     JSONB,                                 -- the thing being approved: draft text, customer, channel
   decided_by  BIGINT,
   decided_at  TIMESTAMPTZ
+);
+
+CREATE TABLE app.owner_report (                      -- M7; immutable weekly report snapshot
+  id           BIGSERIAL PRIMARY KEY,
+  week_start   DATE NOT NULL,                        -- Monday
+  week_end     DATE NOT NULL,                        -- Sunday
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload      JSONB NOT NULL,                       -- sections: aggregates + narratives + registers
+  UNIQUE (week_start, week_end)
 );
 
 -- conversation (M9)

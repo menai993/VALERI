@@ -1,6 +1,6 @@
 # Spec — M12: Tiered LLM router (role-based + cascade)
 
-**Milestone:** M12 · **Builds on:** M6 (gateway, masking, narrate_structured), M9–M11 (all LLM call sites exist) · **Status:** awaiting owner review
+**Milestone:** M12 · **Builds on:** M6 (gateway, masking, narrate_structured), M9–M11 (all LLM call sites exist) · **Status:** approved (D1–D6 defaults OK'd by owner, 2026-06-03)
 
 ## 1. Objective
 

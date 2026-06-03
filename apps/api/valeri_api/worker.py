@@ -15,6 +15,12 @@ def main() -> None:
     setup_json_logging()  # M14: structured JSON logs from the worker process
     logger = logging.getLogger("valeri.worker")
 
+    # Register every ORM model so cross-table FKs resolve at flush time. The worker
+    # flushes ORM objects (scans, audits, the investigation poll) without the API's
+    # router import chain; without this, e.g. app.investigation.signal_id → app.signal
+    # cannot resolve and investigation runs get stuck 'queued'.
+    import valeri_api.models_registry  # noqa: F401
+
     from valeri_api.scanner.scheduler import create_scheduler
 
     scheduler = create_scheduler()

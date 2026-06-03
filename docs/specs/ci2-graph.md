@@ -1,6 +1,6 @@
 # Spec — CI2: Graph-aware analysis & behavioral expectations
 
-**Track:** Client Intelligence (optional, owner-approved) · **Builds on:** **CI1** (KB tables: `client_profile`, `client_fact`, `commercial_event`, `client_relationship`, `customer_alias`; confirm flow that activates edges), M3 (metrics/recompute), M4 (rule engine + scanner + `app.signal`), M5 (signal→task), M7 (owner report), M9/M13 (tool catalog + investigation agent) · **Status:** draft (awaiting owner review)
+**Track:** Client Intelligence (optional, owner-approved) · **Builds on:** **CI1** (KB tables: `client_profile`, `client_fact`, `commercial_event`, `client_relationship`, `customer_alias`; confirm flow that activates edges), M3 (metrics/recompute), M4 (rule engine + scanner + `app.signal`), M5 (signal→task), M7 (owner report), M9/M13 (tool catalog + investigation agent) · **Status:** implemented (D1–D10 defaults OK'd by owner, 2026-06-03; built on CI1)
 
 > **Sequencing — read first:** CI2 consumes **confirmed** (`status='active'`) `client_relationship` edges and the KB tables that **CI1 creates**. CI1 is specified and approved but **not yet implemented**. CI2 must be built **after CI1 ships** (its migration `0018`, the confirm flow, and the KB models must exist). This spec is written now so the design is ready; implementation waits on CI1. (See D9.)
 

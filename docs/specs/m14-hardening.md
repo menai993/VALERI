@@ -1,6 +1,6 @@
 # Spec — M14: Hardening, backups, runbook, pilot readiness
 
-**Milestone:** M14 · **Builds on:** M0–M13 (the complete system) · **Status:** awaiting owner review
+**Milestone:** M14 · **Builds on:** M0–M13 (the complete system) · **Status:** approved (D1–D5 defaults OK'd by owner, 2026-06-03)
 
 ## 1. Objective
 

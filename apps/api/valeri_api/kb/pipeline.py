@@ -137,6 +137,8 @@ def run_capture(
     )
 
     dispositions: list[dict] = []
+    # One clarification per ambiguous mentioned name across this whole capture.
+    clarified: dict[str, int] = {}
 
     for fact in result.facts:
         resolution = _resolve_mention_or_focus(
@@ -150,6 +152,7 @@ def run_capture(
                 source_message_id=message_id,
                 source_user_id=user_id,
                 client=client,
+                clarified=clarified,
             )
         )
 
@@ -165,6 +168,7 @@ def run_capture(
                 source_message_id=message_id,
                 source_user_id=user_id,
                 client=client,
+                clarified=clarified,
             )
         )
 
@@ -181,6 +185,7 @@ def run_capture(
                 to_resolution,
                 source_message_id=message_id,
                 source_user_id=user_id,
+                clarified=clarified,
             )
         )
 

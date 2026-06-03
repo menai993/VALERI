@@ -81,7 +81,7 @@ async def test_high_stakes_ambiguous_name_not_autoattached(db_session: Session) 
             "SELECT kind, question, options, target_record_ref, status "
             "FROM app.clarification WHERE target_record_ref = :ref"
         ),
-        {"ref": f"client_fact:{fact.id}"},
+        {"ref": "mention:Fupupu"},
     ).one()
     assert clar.kind == "entity"
     assert clar.status == "pending"
@@ -91,6 +91,76 @@ async def test_high_stakes_ambiguous_name_not_autoattached(db_session: Session) 
     assert {"link", "pick_other", "create_prospect"} <= actions
     link_option = next(opt for opt in clar.options if opt["action"] == "link")
     assert link_option["customer_id"] == fupy_id
+
+
+@pytest.mark.anyio
+async def test_one_clarification_per_ambiguous_mention(db_session: Session) -> None:
+    """Several records naming the same ambiguous customer share ONE clarification."""
+    _add_customer(db_session, "Fupy")
+    extraction = {
+        "facts": [
+            {
+                "fact_type": "payment_late",
+                "fact_key": "status",
+                "value": {"status": "late"},
+                "mentioned_name": "Fupupu",
+                "source": "stated",
+                "stakes": "high",
+                "confidence": 0.86,
+                "evidence_span": "Fupupu kasni",
+            },
+            {
+                "fact_type": "preference",
+                "fact_key": "kanal",
+                "value": {"kanal": "email"},
+                "mentioned_name": "Fupupu",
+                "source": "stated",
+                "stakes": "low",
+                "confidence": 0.8,
+                "evidence_span": "Fupupu voli email",
+            },
+        ],
+        "events": [
+            {
+                "kind": "meeting",
+                "summary": "Sastanak",
+                "mentioned_name": "Fupupu",
+                "value": None,
+                "categories": [],
+                "occurred_on": None,
+                "source": "stated",
+                "confidence": 0.8,
+                "evidence_span": "sastanak s Fupupu",
+            }
+        ],
+        "relationships": [],
+        "confidence": 0.82,
+    }
+    run_capture(
+        db_session,
+        text_in="Fupupu kasni, voli email, imali smo sastanak.",
+        user_id=1,
+        client=FakeKbLLM(extraction=extraction),
+    )
+
+    clar_count = db_session.execute(
+        text("SELECT count(*) FROM app.clarification WHERE status = 'pending'")
+    ).scalar_one()
+    assert clar_count == 1  # one question for the one ambiguous mention, not three
+    ref = db_session.execute(
+        text("SELECT target_record_ref FROM app.clarification WHERE status = 'pending'")
+    ).scalar_one()
+    assert ref == "mention:Fupupu"
+    # All three records are stored proposed and unresolved.
+    proposed = db_session.execute(
+        text(
+            "SELECT (SELECT count(*) FROM app.client_fact WHERE mentioned_name='Fupupu' "
+            "        AND status='proposed') "
+            "     + (SELECT count(*) FROM app.commercial_event WHERE mentioned_name='Fupupu' "
+            "        AND status='proposed')"
+        )
+    ).scalar_one()
+    assert proposed == 3
 
 
 @pytest.mark.anyio

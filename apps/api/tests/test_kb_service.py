@@ -68,7 +68,7 @@ def _propose_fupupu(session: Session) -> tuple[int, int, int]:
     ).scalar_one()
     clar_id = session.execute(
         text("SELECT id FROM app.clarification WHERE target_record_ref = :ref"),
-        {"ref": f"client_fact:{fact_id}"},
+        {"ref": "mention:Fupupu"},
     ).scalar_one()
     return fupy_id, fact_id, clar_id
 
@@ -183,6 +183,83 @@ async def test_answer_link_writes_alias_and_decision(db_session: Session) -> Non
         text("SELECT status FROM app.clarification WHERE id = :id"), {"id": clar_id}
     ).scalar_one()
     assert clar_status == "answered"
+
+
+@pytest.mark.anyio
+async def test_answer_relinks_all_records_of_mention(db_session: Session) -> None:
+    """One 'mention' clarification answer re-links every proposed record of that name."""
+    fupy_id = _add_customer(db_session, "Fupy")
+    extraction = {
+        "facts": [
+            {
+                "fact_type": "payment_late",
+                "fact_key": "status",
+                "value": {"status": "late"},
+                "mentioned_name": "Fupupu",
+                "source": "stated",
+                "stakes": "high",
+                "confidence": 0.86,
+                "evidence_span": "Fupupu kasni",
+            },
+            {
+                "fact_type": "preference",
+                "fact_key": "kanal",
+                "value": {"kanal": "email"},
+                "mentioned_name": "Fupupu",
+                "source": "stated",
+                "stakes": "low",
+                "confidence": 0.8,
+                "evidence_span": "Fupupu voli email",
+            },
+        ],
+        "events": [
+            {
+                "kind": "meeting",
+                "summary": "Sastanak",
+                "mentioned_name": "Fupupu",
+                "value": None,
+                "categories": [],
+                "occurred_on": None,
+                "source": "stated",
+                "confidence": 0.8,
+                "evidence_span": "sastanak s Fupupu",
+            }
+        ],
+        "relationships": [],
+        "confidence": 0.82,
+    }
+    run_capture(
+        db_session,
+        text_in="Fupupu kasni, voli email, imali smo sastanak.",
+        user_id=1,
+        client=FakeKbLLM(extraction=extraction),
+    )
+    clar_id = db_session.execute(
+        text("SELECT id FROM app.clarification WHERE target_record_ref = 'mention:Fupupu'")
+    ).scalar_one()
+
+    answer_clarification(
+        db_session,
+        clarification_id=clar_id,
+        answer=ClarificationAnswer(option={"action": "link", "customer_id": fupy_id}),
+        user_id=1,
+    )
+
+    # Every proposed record (2 facts + 1 event) is now active and linked to Fupy.
+    active = db_session.execute(
+        text(
+            "SELECT (SELECT count(*) FROM app.client_fact WHERE customer_id=:c "
+            "        AND status='active') "
+            "     + (SELECT count(*) FROM app.commercial_event WHERE customer_id=:c "
+            "        AND status='active')"
+        ),
+        {"c": fupy_id},
+    ).scalar_one()
+    assert active == 3
+    alias = db_session.execute(
+        text("SELECT customer_id FROM app.customer_alias WHERE lower(alias) = 'fupupu'")
+    ).scalar_one()
+    assert alias == fupy_id
 
 
 @pytest.mark.anyio

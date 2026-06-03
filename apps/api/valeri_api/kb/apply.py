@@ -87,18 +87,30 @@ def _disposition(
     }
 
 
-def _maybe_clarify(session: Session, resolution: ResolutionResult, target_ref: str) -> int | None:
-    """Raise an entity clarification when the mention was ambiguous (not 'none')."""
-    if resolution.decision == "clarify":
-        clarification = raise_clarification(
-            session,
-            kind="entity",
-            question=build_entity_question(resolution),
-            options=build_entity_options(resolution),
-            target_record_ref=target_ref,
-        )
-        return clarification.id
-    return None
+def _clarify_for_mention(
+    session: Session, resolution: ResolutionResult, clarified: dict[str, int]
+) -> int | None:
+    """Raise ONE entity clarification per ambiguous mentioned name, deduped per capture.
+
+    Several records (facts/events/an edge endpoint) that name the same ambiguous
+    customer share a single clarification (targeting `mention:<name>`); answering it
+    re-links every proposed record of that mention. This stops the queue from being
+    spammed with identical questions.
+    """
+    if resolution.decision != "clarify":
+        return None
+    key = (resolution.mentioned_name or "").strip().lower()
+    if key in clarified:
+        return clarified[key]
+    clarification = raise_clarification(
+        session,
+        kind="entity",
+        question=build_entity_question(resolution),
+        options=build_entity_options(resolution),
+        target_record_ref=f"mention:{resolution.mentioned_name}",
+    )
+    clarified[key] = clarification.id
+    return clarification.id
 
 
 def apply_fact(
@@ -109,8 +121,10 @@ def apply_fact(
     source_message_id: int | None,
     source_user_id: int | None,
     client: LLMClient | None = None,
+    clarified: dict[str, int] | None = None,
 ) -> dict:
     """Apply one fact candidate by stakes."""
+    clarified = {} if clarified is None else clarified
     resolved = resolution.decision == "auto"
     stakes = classify_stakes(
         session,
@@ -175,7 +189,7 @@ def apply_fact(
     )
     session.add(fact)
     session.flush()
-    clarification_id = _maybe_clarify(session, resolution, f"client_fact:{fact.id}")
+    clarification_id = _clarify_for_mention(session, resolution, clarified)
     return _disposition(
         "fact",
         fact.id,
@@ -194,6 +208,7 @@ def apply_event(
     source_message_id: int | None,
     source_user_id: int | None,
     client: LLMClient | None = None,
+    clarified: dict[str, int] | None = None,
 ) -> dict:
     """Apply one commercial-event candidate by stakes.
 
@@ -201,6 +216,7 @@ def apply_event(
     kb.high_stakes_value, goes to the confirmation queue (the threshold is enforced
     here, not left to the model's own stakes hint).
     """
+    clarified = {} if clarified is None else clarified
     resolved = resolution.decision == "auto"
     value_amount = float(extracted.value) if extracted.value is not None else None
     high_stakes = (
@@ -270,7 +286,7 @@ def apply_event(
     )
     session.add(event)
     session.flush()
-    clarification_id = _maybe_clarify(session, resolution, f"commercial_event:{event.id}")
+    clarification_id = _clarify_for_mention(session, resolution, clarified)
     return _disposition(
         "event",
         event.id,
@@ -289,8 +305,10 @@ def apply_relationship(
     *,
     source_message_id: int | None,
     source_user_id: int | None,
+    clarified: dict[str, int] | None = None,
 ) -> dict:
     """A relationship is consequential — always proposed (await confirm), never auto-applied."""
+    clarified = {} if clarified is None else clarified
     from_id = from_resolution.customer_id if from_resolution.decision == "auto" else None
     to_id = to_resolution.customer_id if to_resolution.decision == "auto" else None
 
@@ -314,15 +332,9 @@ def apply_relationship(
         session.flush()
         return _disposition("relationship", edge.id, from_id, "proposed", auto_saved=False)
 
-    # An endpoint is ambiguous — ask which customer before storing the edge.
+    # An endpoint is ambiguous — ask which customer (deduped per mentioned name).
     unresolved = to_resolution if to_id is None else from_resolution
-    clarification = raise_clarification(
-        session,
-        kind="entity",
-        question=build_entity_question(unresolved),
-        options=build_entity_options(unresolved),
-        target_record_ref=f"relationship_pending:{extracted.rel_type}",
-    )
+    clarification_id = _clarify_for_mention(session, unresolved, clarified)
     return _disposition(
-        "relationship", 0, None, "unresolved", auto_saved=False, clarification_id=clarification.id
+        "relationship", 0, None, "unresolved", auto_saved=False, clarification_id=clarification_id
     )

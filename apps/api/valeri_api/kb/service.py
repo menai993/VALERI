@@ -10,7 +10,7 @@ import datetime
 import logging
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from valeri_api.audit.decision import log_decision
@@ -188,62 +188,47 @@ def _apply_clarification_action(
     option: dict[str, Any],
     clarification: Clarification,
 ) -> Decision:
-    # An entity clarification targets a fact or event (relationship_pending is unsaved).
-    record = None
-    if ref_type in ("client_fact", "commercial_event") and ref_id_str.isdigit():
-        model = ClientFact if ref_type == "client_fact" else CommercialEvent
-        record = session.get(model, int(ref_id_str))
+    # A 'mention:<name>' clarification covers EVERY proposed record of that mention;
+    # legacy 'client_fact:<id>'/'commercial_event:<id>' refs target a single record.
+    records = _clarification_records(session, ref_type, ref_id_str)
+    if ref_type == "mention":
+        mentioned = ref_id_str
+    else:
+        mentioned = records[0].mentioned_name if records else None
 
-    if action == "link" and record is not None:
-        customer_id = int(option["customer_id"])
-        mentioned = record.mentioned_name
-        record.customer_id = customer_id
-        if isinstance(record, ClientFact):
-            _supersede_active_fact(session, record)
-        record.status = "active"
+    if action in ("link", "create_prospect") and records:
+        if action == "link":
+            customer_id = int(option["customer_id"])
+        else:
+            customer_id = _create_prospect(session, mentioned or "Novi kupac")
+
+        for record in records:
+            record.customer_id = customer_id
+            if isinstance(record, ClientFact):
+                _supersede_active_fact(session, record)
+            record.status = "active"
         session.flush()
         if mentioned:
             _write_alias(session, mentioned, customer_id)
-        (
-            refresh_profile_summary(session, customer_id, client=None)
-            if hasattr(record, "customer_id")
-            else None
-        )
+        refresh_profile_summary(session, customer_id, client=None)
+
+        verb = "Povezano" if action == "link" else "Kreiran novi kupac za"
         return log_decision(
             session,
             kind="approval",
             actor="user",
-            summary=f"Povezano: „{mentioned}“ → kupac {customer_id}",
+            summary=f"{verb}: „{mentioned}“ → kupac {customer_id} ({len(records)} zapis(a))",
             payload={
                 "target": clarification.target_record_ref,
-                "action": "link",
+                "action": action,
                 "customer_id": customer_id,
                 "alias": mentioned,
+                "records": len(records),
             },
             reversible=True,
         )
 
-    if action == "create_prospect" and record is not None:
-        new_id = _create_prospect(session, record.mentioned_name or "Novi kupac")
-        record.customer_id = new_id
-        record.status = "active"
-        session.flush()
-        if record.mentioned_name:
-            _write_alias(session, record.mentioned_name, new_id)
-        return log_decision(
-            session,
-            kind="approval",
-            actor="user",
-            summary=f"Kreiran novi kupac za „{record.mentioned_name}“ (#{new_id})",
-            payload={
-                "target": clarification.target_record_ref,
-                "action": "create_prospect",
-                "customer_id": new_id,
-            },
-            reversible=True,
-        )
-
-    # pick_other / no match: leave the record unresolved; remember the rejection.
+    # pick_other / no match: leave the records unresolved; remember the rejection.
     return log_decision(
         session,
         kind="rejection",
@@ -252,6 +237,35 @@ def _apply_clarification_action(
         payload={"target": clarification.target_record_ref, "action": action or "dismiss"},
         reversible=True,
     )
+
+
+def _clarification_records(session: Session, ref_type: str, ref_value: str) -> list:
+    """The proposed, unresolved records a clarification covers."""
+    if ref_type == "mention":
+        facts = (
+            session.query(ClientFact)
+            .filter(
+                func.lower(ClientFact.mentioned_name) == ref_value.lower(),
+                ClientFact.status == "proposed",
+                ClientFact.customer_id.is_(None),
+            )
+            .all()
+        )
+        events = (
+            session.query(CommercialEvent)
+            .filter(
+                func.lower(CommercialEvent.mentioned_name) == ref_value.lower(),
+                CommercialEvent.status == "proposed",
+                CommercialEvent.customer_id.is_(None),
+            )
+            .all()
+        )
+        return [*facts, *events]
+    if ref_type in ("client_fact", "commercial_event") and ref_value.isdigit():
+        model = ClientFact if ref_type == "client_fact" else CommercialEvent
+        record = session.get(model, int(ref_value))
+        return [record] if record is not None else []
+    return []
 
 
 def _write_alias(session: Session, alias: str, customer_id: int) -> None:

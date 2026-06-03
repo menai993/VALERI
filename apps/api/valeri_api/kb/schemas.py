@@ -13,7 +13,7 @@ resolution maps mentioned names to ids server-side.
 import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from valeri_api.kb.models import CLAR_KINDS, EVENT_KINDS, FACT_SOURCES, REL_TYPES
 
@@ -52,6 +52,16 @@ class ExtractedFact(BaseModel):
     stakes: Stakes = "low"
     confidence: float = Field(ge=0, le=1)
     evidence_span: str = Field(min_length=1)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _wrap_scalar_value(cls, value: Any) -> Any:
+        """Tolerate a scalar the model occasionally emits → wrap it, don't reject.
+
+        The prompt asks for a JSON object; an odd attempt may send a string. Wrapping
+        keeps capture on Haiku (attempt 1) instead of failing and cascading to Tier-2.
+        """
+        return value if isinstance(value, dict) else {"value": value}
 
 
 class ExtractedEvent(BaseModel):

@@ -24,23 +24,49 @@ GATE_INSTRUCTION = "Odluči da li sljedeća poruka sadrži činjenicu vrijednu b
 
 EXTRACTION_SYSTEM_PROMPT = (
     "Ti si ekstraktor strukturiranog znanja o kupcima za B2B distributera. Iz poruke "
-    "izvlačiš činjenice (facts), poslovne događaje (events) i odnose između kupaca "
-    "(relationships) — ISKLJUČIVO ono što je u tekstu navedeno. Pravila:\n"
-    "• Ne izmišljaj. Ako nešto nije rečeno, ne navodi ga.\n"
-    "• Za svaki zapis navedi 'evidence_span' — doslovni dio poruke iz kojeg je izvučen.\n"
-    "• 'mentioned_name' je ime kupca kako je spomenuto u poruci (ostavi prazno ako se "
-    "misli na trenutnog kupca u fokusu). NIKADA ne pogađaj interni ID.\n"
-    "• 'value' kod događaja je IZNOS koji je korisnik NAVEO (stated); ne računaj ništa "
-    "sam — brojevi za analizu dolaze iz baze, ne od tebe.\n"
+    "izvlačiš SAMO ono što je navedeno i vraćaš ISKLJUČIVO JSON tačno ovog oblika:\n"
+    "{\n"
+    '  "facts": [ {"fact_type": "...", "fact_key": "...", "value": {...}, '
+    '"mentioned_name": "...", "source": "stated", "stakes": "low", "confidence": 0.0, '
+    '"evidence_span": "..."} ],\n'
+    '  "events": [ {"kind": "deal", "summary": "...", "mentioned_name": "...", '
+    '"value": 0, "categories": ["..."], "occurred_on": null, "source": "stated", '
+    '"confidence": 0.0, "evidence_span": "..."} ],\n'
+    '  "relationships": [ {"rel_type": "same_owner", "from_name": "...", "to_name": "...", '
+    '"source": "stated", "confidence": 0.0, "evidence_span": "..."} ],\n'
+    '  "confidence": 0.0\n'
+    "}\n"
+    "STROGA PRAVILA O TIPOVIMA (kršenje uzrokuje grešku):\n"
+    "• facts[].value MORA biti JSON objekat {ključ: vrijednost}, npr. "
+    '{"kategorija": "hemija"} ili {"status": "kasni"}. NIKADA prosta vrijednost/string.\n'
+    "• events[].value MORA biti čist broj (npr. 72000) ili null — BEZ valute, BEZ "
+    'razdjelnika hiljada, BEZ navodnika (ne "72.000", ne "72000 KM", nego 72000).\n'
+    "• Obavezna polja: facts → fact_type, fact_key, value, confidence, evidence_span; "
+    "events → kind, summary, confidence, evidence_span; relationships → rel_type, "
+    "from_name, to_name.\n"
+    '• Prazne liste su dozvoljene ([]). Uvijek vrati i top-level "confidence".\n'
+    "• 'mentioned_name' je ime kupca kako je spomenuto (prazno = trenutni kupac u "
+    "fokusu). NIKADA ne pogađaj interni ID.\n"
+    "• 'evidence_span' je DOSLOVNI dio poruke. Ne izmišljaj. Brojevi za analizu dolaze "
+    "iz baze, ne od tebe.\n"
     "• 'stakes'='high' za osjetljive činjenice (plaćanje, žalba, negativna tvrdnja, "
-    "velika vrijednost, odnos vlasništva); inače 'low'.\n"
-    "• 'confidence' (0–1) je tvoja sigurnost u tačnost ekstrakcije.\n"
-    "• 'source': 'stated' (korisnik tvrdi), 'inferred' (zaključeno), 'data' (iz podataka).\n"
-    "Dozvoljeni tipovi događaja: deal, meeting, call, complaint, quote, visit, note, other. "
-    "Dozvoljeni tipovi odnosa: same_owner, same_group, chain, shared_decision_maker, "
+    "velika vrijednost, vlasništvo); inače 'low'. 'source': stated|inferred|data.\n"
+    "Dozvoljeni 'kind': deal, meeting, call, complaint, quote, visit, note, other. "
+    "Dozvoljeni 'rel_type': same_owner, same_group, chain, shared_decision_maker, "
     "referral, competitor, geographic_cluster, behavioral_twin, supplier_of.\n"
-    "Odgovori isključivo JSON-om koji odgovara traženoj shemi (facts, events, "
-    "relationships, confidence)."
+    "PRIMJER — poruka: „Zaključio sam godišnji ugovor s Hotel Aria, 72000 KM, kreću "
+    "i s hemijom; isti vlasnik kao Hotel Panorama.“ → "
+    '{"facts": [{"fact_type": "intent", "fact_key": "category_expansion", '
+    '"value": {"kategorija": "hemija"}, "mentioned_name": "Hotel Aria", '
+    '"source": "stated", "stakes": "low", "confidence": 0.9, '
+    '"evidence_span": "kreću i s hemijom"}], '
+    '"events": [{"kind": "deal", "summary": "Godišnji ugovor", '
+    '"mentioned_name": "Hotel Aria", "value": 72000, "categories": ["hemija"], '
+    '"occurred_on": null, "source": "stated", "confidence": 0.95, '
+    '"evidence_span": "Zaključio sam godišnji ugovor s Hotel Aria, 72000 KM"}], '
+    '"relationships": [{"rel_type": "same_owner", "from_name": "Hotel Aria", '
+    '"to_name": "Hotel Panorama", "source": "stated", "confidence": 0.85, '
+    '"evidence_span": "isti vlasnik kao Hotel Panorama"}], "confidence": 0.9}'
 )
 
 EXTRACTION_INSTRUCTION = (

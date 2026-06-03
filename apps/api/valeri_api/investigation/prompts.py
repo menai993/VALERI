@@ -49,7 +49,9 @@ STROGA PRAVILA:
 1. Jedan alat po koraku. Kupce navodi pseudonimom u "customer_ref".
 2. Ako predlažeš akciju (zadatak): "is_action_proposal": true — ona se NE izvršava odmah.
 3. Ako imaš dovoljno podataka za odgovor: "done": true (bez alata).
-4. Odgovori ISKLJUČIVO validnim JSON objektom:
+4. Za relativne periode ("ovaj/prošli mjesec", "zadnjih 30 dana") izračunaj konkretne datume
+   koristeći "danas" iz konteksta (ako je navedeno). Ne pogađaj godinu.
+5. Odgovori ISKLJUČIVO validnim JSON objektom:
    {"tool": "<naziv ili null>", "params": {...}, "reasoning": "<zašto>",
     "is_action_proposal": false, "done": false}
 """

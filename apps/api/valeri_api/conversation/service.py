@@ -95,7 +95,32 @@ def handle_message(
     if tool_name == "query_metric" and not _is_known_metric(classification.params.get("metric")):
         tool_name = None
 
-    # ── 4. no fitting tool → data-aware assistant reply (read-only, no mutation) ──
+    # ── 4a. analysis → bounded multi-step agent loop (CSA Phase 2) ───────────────
+    # A comparison / multi-metric / data-grounded "why" question needs several
+    # SQL-backed tool calls and one synthesized answer; the deep async 'Istraži'
+    # agent stays for explicit investigations.
+    if classification.intent == "analysis":
+        from valeri_api.conversation.agent import run_chat_agent
+        from valeri_api.conversation.context import prior_context
+
+        text, register, agent_tool_calls, _source = run_chat_agent(
+            session,
+            user,
+            masked_text,
+            context,
+            message_id=user_message.id,
+            prior_context=prior_context(session, conversation.id),
+            client=client,
+        )
+        for call in agent_tool_calls:
+            events.append(
+                SSEEvent(type="tool_call", data={"tool": call.get("tool"), "params": call.get("params", {})})
+            )
+        return _finish(
+            session, conversation, events, text=text, register=register, tool_calls=agent_tool_calls
+        )
+
+    # ── 4b. no fitting tool → data-aware assistant reply (read-only, no mutation) ──
     # A validly-chosen tool is dispatched even when the model tagged the intent
     # "help" (e.g. "šta sve možeš?" → describe_capabilities); only a genuinely
     # empty tool falls through to the assistant.

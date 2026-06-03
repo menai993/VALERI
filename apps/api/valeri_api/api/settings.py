@@ -1,15 +1,19 @@
-"""Settings API (M8): rule-config thresholds + user management — per docs/api-spec.md.
+"""Settings API (M8): rule-config thresholds + user management + LLM routing (M12)
+— per docs/api-spec.md.
 
 rule-config: owner+admin read, admin writes. Threshold changes are how detection
 behaviour is tuned — they live in the DB, never in code (CLAUDE.md), and every
 change writes an append-only reversible app.decision (M10).
 users: admin only.
+llm (M12): routing config (role→tier, cascade); masking is shown locked-on and can
+never be disabled through the API.
 """
 
-from typing import Annotated, Any
+import json
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -125,6 +129,143 @@ def patch_rule_config(
         )
     session.commit()
     return get_rule_config(session, user)
+
+
+# ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+
+class LlmTierInfo(BaseModel):
+    """One tier as the app sees it; the alias→Claude-model mapping is infra config."""
+
+    alias: str
+    description: str
+
+
+class LlmSettingsResponse(BaseModel):
+    provider: str
+    tiers: dict[str, LlmTierInfo]
+    role_tiers: dict[str, str]
+    escalation_confidence_threshold: float
+    cascade_enabled: bool
+    cascade_max_escalations: int
+    # Masking is load-bearing (principle 6) — it is displayed, never configurable.
+    masking: Literal["locked_on"] = "locked_on"
+
+
+class LlmSettingsPatch(BaseModel):
+    """Editable routing settings. extra='forbid': any attempt to touch masking
+    (or any unknown field) is rejected with 422 — masking cannot be disabled."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role_tiers: dict[str, str] | None = None
+    escalation_confidence_threshold: float | None = Field(default=None, ge=0, le=1)
+    cascade_enabled: bool | None = None
+
+
+def _llm_settings_response(session: Session) -> LlmSettingsResponse:
+    from valeri_api.config import get_settings
+    from valeri_api.llm.router.router import load_router_config
+
+    config = load_router_config(session)
+    settings = get_settings()
+    return LlmSettingsResponse(
+        provider="anthropic (hosted Claude via LiteLLM)",
+        tiers={
+            "tier1": LlmTierInfo(
+                alias=settings.llm_tier1_alias, description="Claude Haiku — brzi/jeftini sloj"
+            ),
+            "tier2": LlmTierInfo(
+                alias=settings.llm_tier2_alias, description="Claude Sonnet — jaki sloj"
+            ),
+            "tier2_strong": LlmTierInfo(
+                alias=settings.llm_tier2_strong_alias,
+                description="Claude Opus — najjači sloj (najteži slučajevi)",
+            ),
+        },
+        role_tiers=config["role_tiers"],
+        escalation_confidence_threshold=config["escalation_confidence_threshold"],
+        cascade_enabled=config["cascade_enabled"],
+        cascade_max_escalations=config["cascade_max_escalations"],
+    )
+
+
+@router.get("/settings/llm", response_model=LlmSettingsResponse)
+def get_llm_settings(
+    session: Annotated[Session, Depends(get_session)],
+    _user: Annotated[object, Depends(require_roles("owner", "admin"))],
+) -> LlmSettingsResponse:
+    """The LLM routing configuration (per docs/api-spec.md M12)."""
+    return _llm_settings_response(session)
+
+
+@router.patch("/settings/llm", response_model=LlmSettingsResponse)
+def patch_llm_settings(
+    body: LlmSettingsPatch,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[AppUser, Depends(require_roles("admin"))],
+) -> LlmSettingsResponse:
+    """Change routing config; every change writes a reversible app.decision.
+
+    Masking is structurally absent from the patch schema (extra='forbid') — there
+    is no path to disable it.
+    """
+    from valeri_api.llm.router.roles import TIER_ORDER
+    from valeri_api.llm.router.router import load_router_config
+
+    config = load_router_config(session)
+
+    # (param, old, new) for every requested change.
+    changes: list[tuple[str, Any, Any]] = []
+    if body.role_tiers is not None:
+        for role, tier in body.role_tiers.items():
+            if tier not in TIER_ORDER:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "invalid_tier",
+                        "message": f"Nepoznat tier {tier!r} za ulogu {role!r}",
+                    },
+                )
+        changes.append(("role_tiers", config["role_tiers"], body.role_tiers))
+    if body.escalation_confidence_threshold is not None:
+        changes.append(
+            (
+                "escalation_confidence_threshold",
+                config["escalation_confidence_threshold"],
+                body.escalation_confidence_threshold,
+            )
+        )
+    if body.cascade_enabled is not None:
+        changes.append(("cascade_enabled", config["cascade_enabled"], body.cascade_enabled))
+
+    for param, old_value, new_value in changes:
+        session.execute(
+            text(
+                "UPDATE app.rule_config "
+                "SET value = CAST(:value AS jsonb), updated_by = :user_id, updated_at = now() "
+                "WHERE rule = 'llm_router' AND param = :param"
+            ),
+            {"value": json.dumps(new_value), "user_id": user.id, "param": param},
+        )
+        log_decision(
+            session,
+            kind="threshold_change",
+            actor="user",
+            summary=f"LLM routing: {param} promijenjen",
+            payload={
+                "rule": "llm_router",
+                "param": param,
+                "old_value": old_value,
+                "new_value": new_value,
+                "changed_by": user.id,
+                "source": "settings",
+            },
+            reversible=True,
+        )
+
+    session.commit()
+    return _llm_settings_response(session)
 
 
 # ── users (admin only) ────────────────────────────────────────────────────────

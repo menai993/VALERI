@@ -263,6 +263,29 @@ export interface RuleConfigEntry {
   updated_at: string | null
 }
 
+// ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+export interface LlmTierInfo {
+  alias: string
+  description: string
+}
+
+export interface LlmSettings {
+  provider: string
+  tiers: Record<string, LlmTierInfo>
+  role_tiers: Record<string, string>
+  escalation_confidence_threshold: number
+  cascade_enabled: boolean
+  cascade_max_escalations: number
+  masking: "locked_on"
+}
+
+export interface LlmSettingsPatch {
+  role_tiers?: Record<string, string>
+  escalation_confidence_threshold?: number
+  cascade_enabled?: boolean
+}
+
 // ── self-configuration (M10) ──────────────────────────────────────────────────
 
 /** The resolved scope of a learned rule (data-model.md scope JSONB shape). */

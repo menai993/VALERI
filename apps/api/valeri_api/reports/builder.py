@@ -216,6 +216,7 @@ def _narrate_or_template(
                 system_prompt=REPORT_SYSTEM_PROMPT,
                 instruction=instruction,
                 client=client,
+                role="report_narration",  # M12: Tier-1 by role
             )
             return rehydrate(narrative.text, context), "llm"
         except NarrationFailed as failure:

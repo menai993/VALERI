@@ -46,6 +46,7 @@ def classify_intent(
             ),
             client=client,
             text_field=None,  # classification carries no narrative numbers
+            role="intent",  # M12: Tier-1 by role
         )
         return classification
     except NarrationFailed as failure:

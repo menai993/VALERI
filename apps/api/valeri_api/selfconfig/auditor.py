@@ -344,6 +344,7 @@ def _narrate_flag(session: Session, drift: DriftReport, client: LLMClient | None
             ),
             client=client,
             register="analiza",
+            role="over_suppression_audit",  # M12: Tier-2 by role (architecture §4)
         )
         return rehydrate(narration.text, context)
     except NarrationFailed as failure:

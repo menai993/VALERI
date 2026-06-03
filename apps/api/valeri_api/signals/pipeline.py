@@ -105,6 +105,7 @@ def create_tasks_from_signals(
                     customer_name=signal.customer_name,
                     segment=signal.customer_segment,
                     client=client,
+                    role="narration",  # M12: Tier-1 by role
                 )
                 # Rehydrate pseudonyms to real names — tasks are for humans.
                 body = rehydrate(narrated.narration.body, narrated.context)

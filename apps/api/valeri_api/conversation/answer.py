@@ -103,6 +103,7 @@ def narrate_answer(
                 "Svi brojevi su već izračunati — koristi ih doslovno."
             ),
             client=client,
+            role="simple_qa",  # M12: Tier-1 by role
         )
         return rehydrate(answer.text, context), answer.register, "llm"
     except NarrationFailed as failure:

@@ -86,6 +86,10 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set in .env}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set in .env}
+      # M12: tier→model mapping is pure config (defaults match .env.example).
+      LLM_TIER1_MODEL: ${LLM_TIER1_MODEL:-anthropic/claude-haiku-4-5-20251001}
+      LLM_TIER2_MODEL: ${LLM_TIER2_MODEL:-anthropic/claude-sonnet-4-6}
+      LLM_TIER2_STRONG_MODEL: ${LLM_TIER2_STRONG_MODEL:-anthropic/claude-opus-4-8}
     volumes:
       - ./litellm.config.yaml:/etc/litellm/config.yaml:ro
 

@@ -21,6 +21,8 @@ import type {
   Items,
   LearnedRule,
   LearnedRuleDetail,
+  LlmSettings,
+  LlmSettingsPatch,
   LostArticleRow,
   OwnerReport,
   OwnerReportSummary,
@@ -329,6 +331,27 @@ export function useRuleConfig() {
     queryKey: ["settings", "rule-config"],
     queryFn: () => api.get<Items<RuleConfigEntry>>("/api/settings/rule-config"),
     retry: false,
+  })
+}
+
+// ── LLM routing settings (M12) ────────────────────────────────────────────────
+
+export function useLlmSettings() {
+  return useQuery<LlmSettings>({
+    queryKey: ["settings", "llm"],
+    queryFn: () => api.get<LlmSettings>("/api/settings/llm"),
+    retry: false,
+  })
+}
+
+export function usePatchLlmSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: LlmSettingsPatch) => api.patch<LlmSettings>("/api/settings/llm", patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "llm"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
   })
 }
 

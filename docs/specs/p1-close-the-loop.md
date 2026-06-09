@@ -1,6 +1,6 @@
 # Spec — P1: Close the loop (approvals UI, inbox, task→activity, Danas)
 
-**Track:** Improvement Roadmap P1 (`docs/IMPROVEMENT-ROADMAP.md`) · **Builds on:** M7 approvals API (complete, UI-less), C-CRM2 activity API (`POST /activity`, hook unused), CI1 review queue, M13 investigations API, M8 dashboard/tasks · **Status:** draft (awaiting owner review)
+**Track:** Improvement Roadmap P1 (`docs/IMPROVEMENT-ROADMAP.md`) · **Builds on:** M7 approvals API (complete, UI-less), C-CRM2 activity API (`POST /activity`, hook unused), CI1 review queue, M13 investigations API, M8 dashboard/tasks · **Status:** implemented (D1–D6 defaults approved by owner, 2026-06-09)
 
 ## 1. Objective
 

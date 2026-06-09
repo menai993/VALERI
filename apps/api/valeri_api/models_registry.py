@@ -19,6 +19,7 @@ import valeri_api.auth.models  # noqa: F401
 import valeri_api.capabilities.models  # noqa: F401
 import valeri_api.conversation.models  # noqa: F401
 import valeri_api.crm.models  # noqa: F401
+import valeri_api.documents.models  # noqa: F401
 import valeri_api.domain.models  # noqa: F401
 import valeri_api.ingest.models  # noqa: F401
 import valeri_api.investigation.models  # noqa: F401

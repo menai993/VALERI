@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     auth_secret: str = "dev-only-auth-secret-change-me-immediately"  # >= 32 bytes for HS256
     auth_token_hours: int = 12
 
+    # ── DI1a — document object storage (MinIO, S3-compatible) ────────────────
+    minio_endpoint: str = "http://minio:9000"
+    minio_access_key: str = "valeri"
+    minio_secret_key: str = "valeri-minio-2026"  # secret, from env
+    minio_bucket: str = "valeri-documents"
+
 
 @lru_cache
 def get_settings() -> Settings:

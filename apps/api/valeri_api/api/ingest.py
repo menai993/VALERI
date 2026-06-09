@@ -8,11 +8,14 @@ GET  /api/ingest/report/{import_id}
 RBAC (M8): admin only — importing data is an administrative operation.
 """
 
+import datetime
 import tempfile
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.deps import require_roles
@@ -22,6 +25,19 @@ from valeri_api.ingest.pipeline import files_from_directory, run_import
 from valeri_api.ingest.schemas import ImportReport, ImportResult
 
 router = APIRouter(dependencies=[Depends(require_roles("admin"))])
+
+
+class ImportRunSummary(BaseModel):
+    import_id: int
+    source: str
+    status: str
+    started_at: datetime.datetime
+    finished_at: datetime.datetime | None
+    stats: dict | None
+
+
+class ImportRunList(BaseModel):
+    items: list[ImportRunSummary]
 
 
 @router.post("/ingest/import", status_code=201, response_model=ImportResult)
@@ -80,6 +96,31 @@ def _run(session: Session, files: dict[str, Path], source: str) -> ImportResult:
             detail={"code": "import_failed", "message": str(error)},
         ) from error
     return ImportResult(import_id=run_id)
+
+
+@router.get("/ingest/imports", response_model=ImportRunList)
+def list_imports(
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = 50,
+) -> ImportRunList:
+    """Past import runs, newest first (the import history)."""
+    limit = max(1, min(limit, 200))
+    runs = session.scalars(
+        select(ImportRun).order_by(ImportRun.id.desc()).limit(limit)
+    ).all()
+    return ImportRunList(
+        items=[
+            ImportRunSummary(
+                import_id=run.id,
+                source=run.source,
+                status=run.status,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                stats=run.stats,
+            )
+            for run in runs
+        ]
+    )
 
 
 @router.get("/ingest/report/{import_id}", response_model=ImportReport)

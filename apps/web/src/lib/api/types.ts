@@ -56,6 +56,107 @@ export interface User {
   created_at: string
 }
 
+export interface UserCreate {
+  name: string
+  email: string
+  role: Role
+  password: string
+  sales_rep_id?: number | null
+  preferred_language?: string
+}
+
+export interface UserUpdate {
+  name?: string
+  role?: Role
+  password?: string
+  sales_rep_id?: number | null
+  preferred_language?: string
+}
+
+export interface RuleConfigChange {
+  rule: string
+  param: string
+  value: unknown
+}
+
+// ── data ingest (M2 + data-ingest-ui) ─────────────────────────────────────────
+
+export interface ImportResult {
+  import_id: number
+}
+
+export interface EntityStats {
+  created: number
+  updated: number
+  unchanged: number
+}
+export interface LineStats {
+  created: number
+  replaced: number
+  unchanged: number
+}
+export interface ImportStats {
+  kupci: EntityStats
+  artikli: EntityStats
+  fakture: EntityStats
+  stavke: LineStats
+}
+
+export interface DuplicateCode {
+  code: string
+  names: string[]
+}
+export interface RenamedArticle {
+  code: string
+  old_name: string
+  new_name: string
+}
+export interface CodeSwapCandidate {
+  old_code: string
+  new_code: string
+  name: string
+  already_mapped: boolean
+}
+export interface MissingSegment {
+  customer_code: string
+  name: string
+}
+export interface OrphanLine {
+  row_no: number
+  broj_fakture: string | null
+  sifra_artikla: string | null
+  reason: string
+}
+export interface QualityReport {
+  duplicate_customer_codes: DuplicateCode[]
+  duplicate_article_codes: DuplicateCode[]
+  renamed_articles: RenamedArticle[]
+  code_swap_candidates: CodeSwapCandidate[]
+  missing_segments: MissingSegment[]
+  orphan_lines: OrphanLine[]
+}
+
+export interface ImportReport {
+  import_id: number
+  status: string
+  source: string
+  started_at: string
+  finished_at: string | null
+  stats: ImportStats | null
+  quality: QualityReport | null
+}
+
+export interface ImportRunSummary {
+  import_id: number
+  source: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  stats: ImportStats | null
+}
+
+export type IngestFileKey = "kupci" | "artikli" | "fakture" | "stavke"
+
 // ── envelope ──────────────────────────────────────────────────────────────────
 
 export interface Envelope {

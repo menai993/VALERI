@@ -25,6 +25,10 @@ import type {
   DashboardResponse,
   Decision,
   DismissResponse,
+  IngestFileKey,
+  ImportReport,
+  ImportResult,
+  ImportRunSummary,
   Investigation,
   InvestigationDetail,
   Items,
@@ -42,11 +46,14 @@ import type {
   OwnerReportSummary,
   Paginated,
   RepActivityBlock,
+  RuleConfigChange,
   RuleConfigEntry,
   RuleScope,
   SignalRow,
   TaskRow,
   User,
+  UserCreate,
+  UserUpdate,
 } from "./types"
 
 // ── auth ──────────────────────────────────────────────────────────────────────
@@ -577,6 +584,68 @@ export function useUsers() {
     queryKey: ["settings", "users"],
     queryFn: () => api.get<Items<User>>("/api/settings/users"),
     retry: false,
+  })
+}
+
+/** Admin: edit a detection threshold (writes a reversible decision server-side). */
+export function usePatchRuleConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (changes: RuleConfigChange[]) =>
+      api.patch<Items<RuleConfigEntry>>("/api/settings/rule-config", { changes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "rule-config"] })
+      queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    },
+  })
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: UserCreate) => api.post<User>("/api/settings/users", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", "users"] }),
+  })
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: UserUpdate }) =>
+      api.patch<User>(`/api/settings/users/${id}`, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", "users"] }),
+  })
+}
+
+// ── data ingest (M2 + data-ingest-ui) ─────────────────────────────────────────
+
+export function useImportRuns() {
+  return useQuery<Items<ImportRunSummary>>({
+    queryKey: ["ingest", "imports"],
+    queryFn: () => api.get<Items<ImportRunSummary>>("/api/ingest/imports"),
+    retry: false,
+  })
+}
+
+export function useImportReport(importId: number | null) {
+  return useQuery<ImportReport>({
+    queryKey: ["ingest", "report", importId],
+    queryFn: () => api.get<ImportReport>(`/api/ingest/report/${importId}`),
+    enabled: importId !== null,
+    retry: false,
+  })
+}
+
+/** Import the 4 export files (multipart) → {import_id}. Invalidates the history list. */
+export function useImportMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (files: Record<IngestFileKey, File>) => {
+      const form = new FormData()
+      for (const [key, file] of Object.entries(files)) form.append(key, file)
+      return api.upload<ImportResult>("/api/ingest/import", form)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ingest", "imports"] }),
   })
 }
 

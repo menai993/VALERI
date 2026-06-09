@@ -506,3 +506,55 @@ def test_dates_and_money_round_trip_exactly(fresh_import_db, seed_data) -> None:
     assert invoice_date == invoice["date"]
     assert isinstance(line_total, Decimal)
     assert isinstance(invoice_date, datetime.date)
+
+
+# ── data-ingest-ui: import history list endpoint (admin only) ─────────────────
+
+
+@pytest.mark.anyio
+async def test_list_imports_admin_only(seeded_db) -> None:
+    """GET /api/ingest/imports is admin-only (owner/finance/rep → 403)."""
+    from tests.conftest import login, make_client
+    from valeri_api.seed.users import ADMIN_EMAIL, OWNER_EMAIL
+
+    owner = make_client()
+    try:
+        await login(owner, OWNER_EMAIL)
+        assert (await owner.get("/api/ingest/imports")).status_code == 403
+    finally:
+        await owner.aclose()
+
+    admin = make_client()
+    try:
+        await login(admin, ADMIN_EMAIL)
+        assert (await admin.get("/api/ingest/imports")).status_code == 200
+    finally:
+        await admin.aclose()
+
+
+@pytest.mark.anyio
+async def test_list_imports_returns_run_after_import(seeded_db, export_dir: Path) -> None:
+    """After an API import, the run appears in the history with status + counts."""
+    from tests.conftest import login, make_client
+    from valeri_api.seed.users import ADMIN_EMAIL
+
+    admin = make_client()
+    try:
+        await login(admin, ADMIN_EMAIL)
+        files = _export_files(export_dir)
+        upload = await admin.post(
+            "/api/ingest/import",
+            files={name: (f"{name}.csv", path.read_bytes(), "text/csv") for name, path in files.items()},
+        )
+        assert upload.status_code == 201, upload.text
+        import_id = upload.json()["import_id"]
+
+        listing = await admin.get("/api/ingest/imports")
+        assert listing.status_code == 200
+        items = listing.json()["items"]
+        run = next((r for r in items if r["import_id"] == import_id), None)
+        assert run is not None
+        assert run["status"] == "completed"
+        assert run["stats"] is not None
+    finally:
+        await admin.aclose()

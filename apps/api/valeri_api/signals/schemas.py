@@ -4,7 +4,7 @@ import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskRead(BaseModel):
@@ -29,6 +29,18 @@ class TaskRead(BaseModel):
     confidence: Decimal | None = None
     conf_band: str | None = None
     evidence: dict[str, Any] | None = None
+    # Customer context joined via the signal (NULL for manual tasks — P1):
+    customer_id: int | None = None
+    customer_name: str | None = None
+
+
+class TaskCreate(BaseModel):
+    """A manual, user-created task (P1): no signal, no AI envelope."""
+
+    title: str = Field(min_length=2, max_length=300)
+    body: str | None = None
+    assignee_id: int
+    due_date: datetime.date | None = None
 
 
 class TaskListResponse(BaseModel):

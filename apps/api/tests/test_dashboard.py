@@ -313,6 +313,32 @@ async def test_dashboard_range_presets(dashboard_db) -> None:
         await client.aclose()
 
 
+@pytest.mark.anyio
+async def test_dashboard_range_danas(dashboard_db) -> None:
+    """P1: ?range=1d (Danas) is accepted and windows the KPI to today only."""
+    engine, _ = dashboard_db
+    client = make_client()
+    try:
+        await login(client, OWNER_EMAIL)
+        response = await client.get("/api/dashboard", params={"range": "1d"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["range_days"] == 1
+
+        kpis = {tile["key"]: tile for tile in body["kpis"]}
+        with engine.connect() as conn:
+            revenue_1d = conn.execute(
+                text(
+                    "SELECT COALESCE(SUM(total), 0) FROM core.invoice "
+                    "WHERE date > :as_of - 1 AND date <= :as_of"
+                ),
+                {"as_of": datetime.date.today()},
+            ).scalar()
+        assert Decimal(kpis["ukupan_prihod"]["value"]) == revenue_1d
+    finally:
+        await client.aclose()
+
+
 # ── M11: the recently-suppressed list ─────────────────────────────────────────
 
 

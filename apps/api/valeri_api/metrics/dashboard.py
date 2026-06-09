@@ -34,8 +34,8 @@ from valeri_api.metrics.schemas import (
 TABLE_LIMIT = 10
 INSIGHT_LIMIT = 8
 
-# Supported date-range presets (D7).
-RANGE_PRESETS = {"30d": 30, "90d": 90, "12m": 365}
+# Supported date-range presets (D7; "1d" = Danas, P1).
+RANGE_PRESETS = {"1d": 1, "30d": 30, "90d": 90, "12m": 365}
 DEFAULT_RANGE = "30d"
 
 _SQL_FILE = Path(__file__).parent / "sql" / "dashboard.sql"

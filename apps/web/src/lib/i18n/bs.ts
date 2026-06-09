@@ -309,6 +309,7 @@ export const bs = {
     due_today: "Danas",
     due_overdue: "Kasni",
     due_all: "Svi",
+    manual_badge: "Ručni zadatak",
     feedback_thanks: "Hvala na povratnoj informaciji.",
     status: {
       open: "Otvoren",

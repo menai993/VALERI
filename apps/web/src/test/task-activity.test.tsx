@@ -116,6 +116,38 @@ describe("task → activity flow", () => {
     expect(calls.some((c) => c.startsWith("POST") && c.includes("/api/activity"))).toBe(false)
   })
 
+  it("a manual task shows 'Ručni zadatak' instead of an AI register chip", async () => {
+    const calls: string[] = []
+    const manual = { ...task, id: 12, signal_id: null, rule: null, confidence: null,
+      conf_band: null, evidence: null, customer_id: null, customer_name: null }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ items: [manual], next_cursor: null }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    )
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <I18nProvider>
+          <ToastProvider>
+            <MemoryRouter initialEntries={["/zadaci"]}>
+              <TasksPage />
+            </MemoryRouter>
+          </ToastProvider>
+        </I18nProvider>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId("manual-task-badge")).toBeInTheDocument())
+    expect(screen.getByTestId("manual-task-badge")).toHaveTextContent("Ručni zadatak")
+    expect(screen.queryByText("Preporuka")).not.toBeInTheDocument()
+    expect(calls).toEqual([])
+  })
+
   it("renders the Danas/Kasni due filter chips", async () => {
     renderPage([])
     await waitFor(() => expect(screen.getByTestId("due-today")).toBeInTheDocument())

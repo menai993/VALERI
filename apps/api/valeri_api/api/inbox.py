@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from valeri_api.auth.deps import CurrentUser
+from valeri_api.auth.deps import CurrentUser, visible_customer_ids
 from valeri_api.db import get_session
 
 router = APIRouter()
@@ -43,13 +43,29 @@ def inbox_summary(
         text("SELECT count(*) FROM app.clarification WHERE status = 'pending'")
     ).scalar_one()
 
-    proposed = session.execute(
-        text(
-            "SELECT (SELECT count(*) FROM app.client_fact WHERE status = 'proposed')"
-            " + (SELECT count(*) FROM app.commercial_event WHERE status = 'proposed')"
-            " + (SELECT count(*) FROM app.client_relationship WHERE status = 'proposed')"
-        )
-    ).scalar_one()
+    # Proposed KB items are scoped exactly like /kb/pending (visible_customer_ids:
+    # a rep sees their book + unresolved records) so the badge matches the queue.
+    scope = visible_customer_ids(user, session)
+    if scope is None:
+        proposed = session.execute(
+            text(
+                "SELECT (SELECT count(*) FROM app.client_fact WHERE status = 'proposed')"
+                " + (SELECT count(*) FROM app.commercial_event WHERE status = 'proposed')"
+                " + (SELECT count(*) FROM app.client_relationship WHERE status = 'proposed')"
+            )
+        ).scalar_one()
+    else:
+        proposed = session.execute(
+            text(
+                "SELECT (SELECT count(*) FROM app.client_fact WHERE status = 'proposed'"
+                "        AND (customer_id IS NULL OR customer_id = ANY(:scope)))"
+                " + (SELECT count(*) FROM app.commercial_event WHERE status = 'proposed'"
+                "        AND (customer_id IS NULL OR customer_id = ANY(:scope)))"
+                " + (SELECT count(*) FROM app.client_relationship WHERE status = 'proposed'"
+                "        AND (from_customer_id = ANY(:scope) OR to_customer_id = ANY(:scope)))"
+            ),
+            {"scope": sorted(scope)},
+        ).scalar_one()
 
     # Tasks due (incl. overdue): reps see their own queue; finance has none.
     if user.role == "finance":

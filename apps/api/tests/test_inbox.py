@@ -38,16 +38,30 @@ def inbox_rows(seeded_db: Engine, seed_data):
                 "VALUES ('entity', 'test?', '[]', 'mention:InboxTest') RETURNING id"
             )
         ).scalar_one()
-        customer_id = conn.execute(text("SELECT id FROM core.customer LIMIT 1")).scalar_one()
-        fact_id = conn.execute(
-            text(
-                "INSERT INTO app.client_fact "
-                "(customer_id, fact_type, fact_key, value, source, confidence, conf_band, status) "
-                "VALUES (:cid, 'preference', 'inbox_test', '{}', 'stated', 0.8, 'visoka', "
-                "'proposed') RETURNING id"
-            ),
-            {"cid": customer_id},
+        # One proposed fact INSIDE rep_a's scope, one OUTSIDE it (RBAC count scoping).
+        in_scope = conn.execute(
+            text("SELECT customer_id FROM core.customer_rep WHERE sales_rep_id = :rid LIMIT 1"),
+            {"rid": rep_a["sales_rep_id"]},
         ).scalar_one()
+        out_scope = conn.execute(
+            text(
+                "SELECT id FROM core.customer WHERE id NOT IN "
+                "(SELECT customer_id FROM core.customer_rep WHERE sales_rep_id = :rid) LIMIT 1"
+            ),
+            {"rid": rep_a["sales_rep_id"]},
+        ).scalar_one()
+        fact_ids = [
+            conn.execute(
+                text(
+                    "INSERT INTO app.client_fact "
+                    "(customer_id, fact_type, fact_key, value, source, confidence, conf_band, "
+                    "status) VALUES (:cid, 'preference', :key, '{}', 'stated', 0.8, 'visoka', "
+                    "'proposed') RETURNING id"
+                ),
+                {"cid": cid, "key": f"inbox_test_{cid}"},
+            ).scalar_one()
+            for cid in (in_scope, out_scope)
+        ]
         task_ids = [
             conn.execute(
                 text(
@@ -60,11 +74,11 @@ def inbox_rows(seeded_db: Engine, seed_data):
         ]
         conn.commit()
 
-    yield {"rep_a": rep_a, "rep_b": rep_b}
+    yield {"rep_a": rep_a, "rep_b": rep_b, "in_scope": in_scope, "out_scope": out_scope}
 
     with seeded_db.connect() as conn:
         conn.execute(text("DELETE FROM app.task WHERE id = ANY(:ids)"), {"ids": task_ids})
-        conn.execute(text("DELETE FROM app.client_fact WHERE id = :id"), {"id": fact_id})
+        conn.execute(text("DELETE FROM app.client_fact WHERE id = ANY(:ids)"), {"ids": fact_ids})
         conn.execute(text("DELETE FROM app.clarification WHERE id = :id"), {"id": clar_id})
         conn.execute(text("DELETE FROM app.approval WHERE id = ANY(:ids)"), {"ids": approval_ids})
         conn.commit()
@@ -133,6 +147,32 @@ async def test_summary_rbac_rep_and_finance(seeded_db: Engine, inbox_rows) -> No
         rep_sql = _sql_counts(seeded_db, rep_id=rep_a["sales_rep_id"])
         assert rep_body["pending_approvals"] == 0  # not an approver
         assert rep_body["tasks_due_today"] == rep_sql["due"] >= 1  # own tasks only
+
+        # Proposed KB counts are scoped like /kb/pending: the out-of-scope fact
+        # is invisible to the rep (counts must match the queue they open).
+        with seeded_db.connect() as conn:
+            rep_proposed = conn.execute(
+                text(
+                    "SELECT (SELECT count(*) FROM app.client_fact WHERE status='proposed' "
+                    "        AND (customer_id IS NULL OR customer_id IN "
+                    "             (SELECT customer_id FROM core.customer_rep "
+                    "              WHERE sales_rep_id = :rid)))"
+                    " + (SELECT count(*) FROM app.commercial_event WHERE status='proposed' "
+                    "        AND (customer_id IS NULL OR customer_id IN "
+                    "             (SELECT customer_id FROM core.customer_rep "
+                    "              WHERE sales_rep_id = :rid)))"
+                    " + (SELECT count(*) FROM app.client_relationship WHERE status='proposed' "
+                    "        AND (from_customer_id IN (SELECT customer_id FROM core.customer_rep "
+                    "                                  WHERE sales_rep_id = :rid) "
+                    "          OR to_customer_id IN (SELECT customer_id FROM core.customer_rep "
+                    "                                WHERE sales_rep_id = :rid)))"
+                ),
+                {"rid": rep_a["sales_rep_id"]},
+            ).scalar_one()
+        assert rep_body["proposed_kb_items"] == rep_proposed
+        # The owner's global count includes the out-of-scope fact the rep can't see.
+        owner_sql = _sql_counts(seeded_db, rep_id=None)
+        assert owner_sql["proposed"] > rep_proposed
 
         await login(finance_client, FINANCE_EMAIL)
         fin_body = (await finance_client.get("/api/inbox/summary")).json()

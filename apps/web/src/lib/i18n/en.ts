@@ -311,6 +311,7 @@ export const en: StringCatalog = {
     due_today: "Today",
     due_overdue: "Overdue",
     due_all: "All",
+    manual_badge: "Manual task",
     feedback_thanks: "Thanks for the feedback.",
     status: {
       open: "Open",

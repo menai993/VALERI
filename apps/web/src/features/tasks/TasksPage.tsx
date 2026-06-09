@@ -62,7 +62,13 @@ function TaskCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <RegisterChip register={task.register} />
+            {task.signal_id !== null ? (
+              <RegisterChip register={task.register} />
+            ) : (
+              <Badge variant="outline" data-testid="manual-task-badge">
+                {t.tasks.manual_badge}
+              </Badge>
+            )}
             <Badge>{t.tasks.status[task.status]}</Badge>
             {task.rule && (
               <Badge variant="outline">

@@ -2,11 +2,13 @@
  * Zadaci (frontend-spec §5): the prioritized task stack — title, AI body,
  * evidence, proposed action, due date, status controls + feedback.
  */
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { useToast } from "@/components/ui/toast"
 import {
   Select,
   SelectContent,
@@ -17,6 +19,7 @@ import {
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardState"
 import { ConfidenceLabel } from "@/components/widgets/ConfidenceLabel"
 import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
+import { ActivityPrompt } from "@/components/widgets/ActivityPrompt"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
 import {
   useTaskFeedbackMutation,
@@ -27,14 +30,35 @@ import type { TaskRow } from "@/lib/api/types"
 import { formatDate } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 
-function TaskCard({ task }: { task: TaskRow }) {
+function TaskCard({
+  task,
+  onDone,
+  highlighted,
+}: {
+  task: TaskRow
+  onDone: (task: TaskRow) => void
+  highlighted?: boolean
+}) {
   const t = useT()
+  const toast = useToast()
   const statusMutation = useTaskStatusMutation()
   const feedbackMutation = useTaskFeedbackMutation()
   const [feedbackSent, setFeedbackSent] = useState(false)
 
+  function sendFeedback(useful: boolean) {
+    feedbackMutation.mutate(
+      { taskId: task.id, useful },
+      { onSuccess: () => toast(t.tasks.feedback_thanks) },
+    )
+    setFeedbackSent(true)
+  }
+
   return (
-    <Card className="flex flex-col gap-3 p-5" data-testid="task-card">
+    <Card
+      id={`task-${task.id}`}
+      className={"flex flex-col gap-3 p-5" + (highlighted ? " ring-2 ring-primary" : "")}
+      data-testid="task-card"
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -47,6 +71,9 @@ function TaskCard({ task }: { task: TaskRow }) {
             )}
           </div>
           <h3 className="text-[15px] font-medium text-text">{task.title}</h3>
+          {task.customer_name && (
+            <span className="text-xs text-text-3">{task.customer_name}</span>
+          )}
           {task.conf_band && <ConfidenceLabel band={task.conf_band} />}
         </div>
         <div className="text-right text-sm">
@@ -81,7 +108,13 @@ function TaskCard({ task }: { task: TaskRow }) {
             <Button
               size="sm"
               variant="positive"
-              onClick={() => statusMutation.mutate({ taskId: task.id, status: "done" })}
+              onClick={() =>
+                statusMutation.mutate(
+                  { taskId: task.id, status: "done" },
+                  { onSuccess: () => onDone(task) },
+                )
+              }
+              data-testid="mark-done"
             >
               {t.tasks.mark_done}
             </Button>
@@ -99,24 +132,10 @@ function TaskCard({ task }: { task: TaskRow }) {
 
         {!feedbackSent ? (
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                feedbackMutation.mutate({ taskId: task.id, useful: true })
-                setFeedbackSent(true)
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={() => sendFeedback(true)}>
               👍 {t.tasks.feedback_useful}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                feedbackMutation.mutate({ taskId: task.id, useful: false })
-                setFeedbackSent(true)
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={() => sendFeedback(false)}>
               👎 {t.tasks.feedback_not_useful}
             </Button>
           </div>
@@ -130,10 +149,29 @@ function TaskCard({ task }: { task: TaskRow }) {
 
 export function TasksPage() {
   const t = useT()
+  const [searchParams] = useSearchParams()
   const [statusFilter, setStatusFilter] = useState<string>("open")
-  const { data, isLoading, isError, refetch } = useTasks(
-    statusFilter === "all" ? {} : { status: statusFilter },
+  const [dueFilter, setDueFilter] = useState<"all" | "today" | "overdue">(
+    searchParams.get("due") === "today" ? "today" : "all",
   )
+  const [activityTask, setActivityTask] = useState<TaskRow | null>(null)
+  const highlightId = searchParams.get("task")
+  const scrolledRef = useRef(false)
+
+  const { data, isLoading, isError, refetch } = useTasks({
+    ...(statusFilter === "all" || dueFilter !== "all" ? {} : { status: statusFilter }),
+    ...(dueFilter !== "all" ? { due: dueFilter } : {}),
+  })
+
+  // /zadaci?task={id}: scroll the linked task into view once it renders (P1 D5).
+  useEffect(() => {
+    if (!highlightId || scrolledRef.current || !data) return
+    const element = document.getElementById(`task-${highlightId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" })
+      scrolledRef.current = true
+    }
+  }, [highlightId, data])
 
   return (
     <div className="flex flex-col gap-4">
@@ -141,6 +179,24 @@ export function TasksPage() {
         <div>
           <h1 className="text-[26px] font-semibold leading-tight text-text">{t.tasks.title}</h1>
           <p className="text-sm text-text-2">{t.tasks.subtitle}</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {(["all", "today", "overdue"] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={dueFilter === value ? "primary" : "default"}
+              onClick={() => setDueFilter(value)}
+              data-testid={`due-${value}`}
+            >
+              {value === "all"
+                ? t.tasks.due_all
+                : value === "today"
+                  ? t.tasks.due_today
+                  : t.tasks.due_overdue}
+            </Button>
+          ))}
         </div>
 
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -162,8 +218,18 @@ export function TasksPage() {
       {data && data.items.length === 0 && <EmptyState message={t.tasks.empty} />}
 
       <div className="flex flex-col gap-3">
-        {data?.items.map((task) => <TaskCard key={task.id} task={task} />)}
+        {data?.items.map((task) => (
+          <TaskCard
+            key={task.id}
+            task={task}
+            onDone={setActivityTask}
+            highlighted={highlightId === String(task.id)}
+          />
+        ))}
       </div>
+
+      {/* P1: log what was done in the same flow as completing the task. */}
+      <ActivityPrompt task={activityTask} onClose={() => setActivityTask(null)} />
     </div>
   )
 }

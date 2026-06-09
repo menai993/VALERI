@@ -187,3 +187,21 @@ async def test_task_rows_carry_customer_via_signal(seeded_db: Engine) -> None:
             conn.execute(text("DELETE FROM app.task WHERE id = :id"), {"id": task_id})
             conn.execute(text("DELETE FROM app.signal WHERE id = :id"), {"id": signal_id})
             conn.commit()
+
+
+# ── the rep directory (assignee selects) ──────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_reps_directory(seeded_db: Engine) -> None:
+    """GET /reps lists every sales rep (id, name) — matches SQL."""
+    client = make_client()
+    try:
+        await login(client, OWNER_EMAIL)
+        body = (await client.get("/api/reps")).json()
+        with seeded_db.connect() as conn:
+            sql_count = conn.execute(text("SELECT count(*) FROM core.sales_rep")).scalar_one()
+        assert len(body["items"]) == sql_count
+        assert all(set(item) == {"id", "name"} for item in body["items"])
+    finally:
+        await client.aclose()

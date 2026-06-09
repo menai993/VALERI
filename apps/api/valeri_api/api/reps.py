@@ -9,6 +9,7 @@ import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.deps import CurrentUser, require_roles
@@ -22,6 +23,19 @@ router = APIRouter()
 
 # log activity: reps (own) + owner/admin (any); finance excluded.
 Logger = Annotated[AppUser, Depends(require_roles("owner", "admin", "sales_rep"))]
+
+
+@router.get("/reps")
+def list_reps(
+    session: Annotated[Session, Depends(get_session)],
+    user: CurrentUser,
+) -> dict:
+    """The sales-rep directory (id, name) — powers assignee selects (P1).
+
+    Plain internal directory data (already exposed as assignee_name on tasks).
+    """
+    rows = session.execute(text("SELECT id, name FROM core.sales_rep ORDER BY name")).all()
+    return {"items": [{"id": row.id, "name": row.name} for row in rows]}
 
 
 @router.get("/reps/activity", response_model=RepActivityBlock)

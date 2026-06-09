@@ -77,9 +77,7 @@ def validate_metric_sql(
     refs = _TABLE_REF_RE.findall(body)
     qualified_targets = {m.start() for m in _TABLE_REF_RE.finditer(body)}
     unqualified = [
-        m.group(1)
-        for m in _UNQUALIFIED_REF_RE.finditer(body)
-        if m.start() not in qualified_targets
+        m.group(1) for m in _UNQUALIFIED_REF_RE.finditer(body) if m.start() not in qualified_targets
     ]
     if unqualified:
         reasons.append(

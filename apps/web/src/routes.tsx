@@ -5,6 +5,7 @@
 import { createBrowserRouter } from "react-router"
 
 import { AppShell } from "@/app/AppShell"
+import { ApprovalsPage } from "@/features/approvals/ApprovalsPage"
 import { AuthGuard } from "@/app/AuthGuard"
 import { AIReportPage } from "@/features/ai-report/AIReportPage"
 import { ArticlesPage } from "@/features/articles/ArticlesPage"
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
           { path: "/artikli", element: <ArticlesPage /> },
           { path: "/prilike", element: <OpportunitiesPage /> },
           { path: "/ai-report", element: <AIReportPage /> },
+          { path: "/odobrenja", element: <ApprovalsPage /> },
           { path: "/zabiljeske", element: <ReviewQueuePage /> },
           { path: "/chat", element: <ChatPage /> },
           { path: "/uvoz", element: <IngestPage /> },

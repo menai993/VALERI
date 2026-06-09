@@ -105,9 +105,7 @@ def list_imports(
 ) -> ImportRunList:
     """Past import runs, newest first (the import history)."""
     limit = max(1, min(limit, 200))
-    runs = session.scalars(
-        select(ImportRun).order_by(ImportRun.id.desc()).limit(limit)
-    ).all()
+    runs = session.scalars(select(ImportRun).order_by(ImportRun.id.desc()).limit(limit)).all()
     return ImportRunList(
         items=[
             ImportRunSummary(

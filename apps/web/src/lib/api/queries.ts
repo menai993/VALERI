@@ -45,11 +45,13 @@ import type {
   OwnerReport,
   OwnerReportSummary,
   Paginated,
+  InboxSummary,
   RepActivityBlock,
   RuleConfigChange,
   RuleConfigEntry,
   RuleScope,
   SignalRow,
+  TaskCreate,
   TaskRow,
   User,
   UserCreate,
@@ -99,6 +101,7 @@ export interface TaskFilters {
   status?: string
   assignee?: number
   rule?: string
+  due?: "today" | "overdue"
 }
 
 export function useTasks(filters: TaskFilters = {}) {
@@ -106,6 +109,29 @@ export function useTasks(filters: TaskFilters = {}) {
     queryKey: ["tasks", filters],
     queryFn: () =>
       api.get<Paginated<TaskRow>>("/api/tasks", { limit: 100, ...filters }),
+  })
+}
+
+/** P1: create a manual task ("Novi zadatak" quick action). */
+export function useCreateTask() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: TaskCreate) => api.post<TaskRow>("/api/tasks", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
+    },
+  })
+}
+
+/** P1: the bell badge — what waits on a human (refetch on focus + 60s poll). */
+export function useInboxSummary() {
+  return useQuery<InboxSummary>({
+    queryKey: ["inbox", "summary"],
+    queryFn: () => api.get<InboxSummary>("/api/inbox/summary"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: false,
   })
 }
 
@@ -117,6 +143,7 @@ export function useTaskStatusMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
     },
   })
 }
@@ -342,7 +369,10 @@ export function useApprovalDecision() {
       decision: "approved" | "rejected" | "deferred"
       note?: string
     }) => api.post<Approval>(`/api/approvals/${approvalId}/decide`, { decision, note }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approvals"] })
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
+    },
   })
 }
 
@@ -407,6 +437,15 @@ export function useUpdateOpportunity() {
 
 // ── rep activity (C-CRM2) ─────────────────────────────────────────────────────
 
+/** The sales-rep directory (id, name) — assignee selects (P1). */
+export function useReps() {
+  return useQuery<{ items: { id: number; name: string }[] }>({
+    queryKey: ["reps", "directory"],
+    queryFn: () => api.get<{ items: { id: number; name: string }[] }>("/api/reps"),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 /** Per-rep activity rollup for a month (owner/admin/finance see all; reps their own). */
 export function useRepActivity(date: string) {
   return useQuery<RepActivityBlock>({
@@ -429,6 +468,7 @@ export function useLogActivity() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reps", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
     },
   })
 }
@@ -469,6 +509,7 @@ function useKbInvalidate() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ["kb"] })
     queryClient.invalidateQueries({ queryKey: ["decisions"] })
+    queryClient.invalidateQueries({ queryKey: ["inbox"] })
   }
 }
 

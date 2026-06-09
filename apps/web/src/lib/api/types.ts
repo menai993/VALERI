@@ -157,6 +157,17 @@ export interface ImportRunSummary {
 
 export type IngestFileKey = "kupci" | "artikli" | "fakture" | "stavke"
 
+// ── inbox (P1): what waits on a human — the bell badge ───────────────────────
+
+export interface InboxSummary {
+  pending_approvals: number
+  pending_clarifications: number
+  proposed_kb_items: number
+  tasks_due_today: number
+  alerts: number // reserved: P2 job-failure alerting
+  total: number
+}
+
 // ── envelope ──────────────────────────────────────────────────────────────────
 
 export interface Envelope {
@@ -338,6 +349,17 @@ export interface TaskRow {
   confidence: string | null
   conf_band: ConfBand | null
   evidence: Record<string, unknown> | null
+  // Customer context joined via the signal (null for manual tasks — P1):
+  customer_id: number | null
+  customer_name: string | null
+}
+
+/** P1: a manual, user-created task (no signal, no AI envelope). */
+export interface TaskCreate {
+  title: string
+  body?: string
+  assignee_id: number
+  due_date?: string
 }
 
 // ── reports ───────────────────────────────────────────────────────────────────

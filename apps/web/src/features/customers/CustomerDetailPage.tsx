@@ -1,15 +1,18 @@
 /**
  * Kupac 360-lite (frontend-spec §5): metrics, monthly trend, basket, signals, tasks.
  */
-import { ArrowLeft } from "lucide-react"
+import { useState } from "react"
+import { ArrowLeft, Search } from "lucide-react"
 import { Link, useParams } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardState"
 import { ComboChart } from "@/components/widgets/ComboChart"
 import { ConfidenceLabel } from "@/components/widgets/ConfidenceLabel"
 import { EvidenceExpander } from "@/components/widgets/EvidenceExpander"
+import { InvestigationDialog } from "@/components/widgets/InvestigationDialog"
 import { KnowledgePanel } from "@/components/widgets/KnowledgePanel"
 import { RegisterChip } from "@/components/widgets/RegisterChip"
 import { RelationshipMap } from "@/components/widgets/RelationshipMap"
@@ -24,6 +27,7 @@ export function CustomerDetailPage() {
   const params = useParams<{ customerId: string }>()
   const customerId = params.customerId ? Number.parseInt(params.customerId, 10) : null
   const { data, isLoading, isError, refetch } = useCustomer(customerId)
+  const [investigateOpen, setInvestigateOpen] = useState(false)
 
   if (isLoading) return <CardSkeleton rows={10} />
   if (isError) return <ErrorState onRetry={() => refetch()} />
@@ -48,6 +52,14 @@ export function CustomerDetailPage() {
             {customer.segment} · {customer.legal_entity_name}
           </p>
         </div>
+        <Button
+          size="sm"
+          onClick={() => setInvestigateOpen(true)}
+          data-testid="istrazi-button"
+        >
+          <Search className="mr-1 h-4 w-4" />
+          {t.new_analysis.istrazi}
+        </Button>
         {customer.risk_band && <RiskBadge band={customer.risk_band} />}
       </div>
 
@@ -149,9 +161,11 @@ export function CustomerDetailPage() {
           {data.signals.length === 0 && <EmptyState />}
           <div className="flex flex-col gap-3">
             {data.signals.map((signal) => (
-              <div
+              <Link
                 key={String(signal.id)}
-                className="flex flex-col gap-1 border-b border-border pb-3 text-sm last:border-0"
+                to="/ai-report"
+                className="flex flex-col gap-1 border-b border-border pb-3 text-sm last:border-0 hover:bg-surface-2"
+                data-testid="customer-signal-link"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -164,7 +178,7 @@ export function CustomerDetailPage() {
                 </div>
                 <ConfidenceLabel band={signal.conf_band as ConfBand} />
                 <EvidenceExpander evidence={signal.evidence as Record<string, unknown>} />
-              </div>
+              </Link>
             ))}
           </div>
         </Card>
@@ -174,20 +188,27 @@ export function CustomerDetailPage() {
           {data.tasks.length === 0 && <EmptyState />}
           <div className="flex flex-col gap-2">
             {data.tasks.map((task) => (
-              <div
+              <Link
                 key={String(task.id)}
-                className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0"
+                to={`/zadaci?task=${task.id}&due=all`}
+                className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 hover:bg-surface-2"
+                data-testid="customer-task-link"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <RegisterChip register={task.register as Register} className="shrink-0" />
                   <span className="truncate text-text-2">{String(task.title)}</span>
                 </div>
                 <Badge>{t.tasks.status[task.status as keyof typeof t.tasks.status]}</Badge>
-              </div>
+              </Link>
             ))}
           </div>
         </Card>
       </div>
+      <InvestigationDialog
+        open={investigateOpen}
+        onClose={() => setInvestigateOpen(false)}
+        defaultQuestion={`Zašto je ${customer.name} promijenio ponašanje narudžbi?`}
+      />
     </div>
   )
 }

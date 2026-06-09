@@ -1,5 +1,5 @@
 /**
- * DateRangePicker (ui-design §5): the range presets dropdown (30d / 90d / 12m, D7).
+ * DateRangePicker (ui-design §5): the range presets dropdown (Danas / 30d / 90d / 12m).
  */
 import { Calendar } from "lucide-react"
 
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select"
 import { useT } from "@/lib/i18n"
 
-export type RangePreset = "30d" | "90d" | "12m"
+export type RangePreset = "1d" | "30d" | "90d" | "12m"
 
 export function DateRangePicker({
   range,
@@ -31,7 +31,7 @@ export function DateRangePicker({
         </span>
       </SelectTrigger>
       <SelectContent>
-        {(["30d", "90d", "12m"] as const).map((preset) => (
+        {(["1d", "30d", "90d", "12m"] as const).map((preset) => (
           <SelectItem key={preset} value={preset}>
             {t.dashboard.range[preset]}
           </SelectItem>

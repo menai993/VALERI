@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { useLogout, useMe } from "@/lib/api/queries"
+import { useInboxSummary, useLogout, useMe } from "@/lib/api/queries"
 import { useT } from "@/lib/i18n"
 import { useLanguageStore, useThemeStore } from "@/store/ui"
 
@@ -27,6 +27,7 @@ export function TopBar() {
   const { data: user } = useMe()
   const logout = useLogout()
   const { theme, toggleTheme } = useThemeStore()
+  const { data: inbox } = useInboxSummary()
   const { language, toggleLanguage } = useLanguageStore()
 
   const roleLabel = user ? t.settings.roles[user.role] : ""
@@ -60,13 +61,50 @@ export function TopBar() {
       </form>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-2 transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="Notifikacije"
-        >
-          <Bell className="h-[18px] w-[18px]" />
-        </button>
+        {/* P1: the functional inbox bell — badge + per-category dropdown. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-testid="inbox-bell"
+              className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-2 transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={t.inbox.aria}
+            >
+              <Bell className="h-[18px] w-[18px]" />
+              {(inbox?.total ?? 0) > 0 && (
+                <span
+                  className="tnum absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-down px-1 text-[10px] font-semibold text-white"
+                  data-testid="inbox-badge"
+                >
+                  {inbox?.total}
+                </span>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" data-testid="inbox-dropdown">
+            <DropdownMenuLabel>{t.inbox.title}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {(inbox?.total ?? 0) === 0 && (
+              <DropdownMenuItem disabled>{t.inbox.empty}</DropdownMenuItem>
+            )}
+            {(inbox?.pending_approvals ?? 0) > 0 && (
+              <DropdownMenuItem onClick={() => navigate("/odobrenja")}>
+                {t.inbox.approvals}: {inbox?.pending_approvals}
+              </DropdownMenuItem>
+            )}
+            {((inbox?.pending_clarifications ?? 0) > 0 || (inbox?.proposed_kb_items ?? 0) > 0) && (
+              <DropdownMenuItem onClick={() => navigate("/zabiljeske")}>
+                {t.inbox.clarifications}: {(inbox?.pending_clarifications ?? 0) +
+                  (inbox?.proposed_kb_items ?? 0)}
+              </DropdownMenuItem>
+            )}
+            {(inbox?.tasks_due_today ?? 0) > 0 && (
+              <DropdownMenuItem onClick={() => navigate("/zadaci?due=today")}>
+                {t.inbox.due_today}: {inbox?.tasks_due_today}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

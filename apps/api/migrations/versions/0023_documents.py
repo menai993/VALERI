@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = "0023"
@@ -57,10 +57,10 @@ def upgrade() -> None:
         sa.Column("legal_entity_id", sa.BigInteger, sa.ForeignKey("core.legal_entity.id")),
         sa.Column("filename", sa.Text, nullable=False),
         sa.Column("mime_type", sa.Text, nullable=False),
-        sa.Column("doc_type", sa.Enum(*_NEW_ENUMS["doc_type"], name="doc_type", create_type=False)),
+        sa.Column("doc_type", ENUM(name="doc_type", create_type=False)),
         sa.Column(
             "source",
-            sa.Enum(*_NEW_ENUMS["doc_source"], name="doc_source", create_type=False),
+            ENUM(name="doc_source", create_type=False),
             nullable=False,
             server_default="upload",
         ),
@@ -71,7 +71,7 @@ def upgrade() -> None:
         sa.Column("uploaded_by", sa.BigInteger),
         sa.Column(
             "status",
-            sa.Enum(*_NEW_ENUMS["doc_status"], name="doc_status", create_type=False),
+            ENUM(name="doc_status", create_type=False),
             nullable=False,
             server_default="uploaded",
         ),
@@ -83,9 +83,7 @@ def upgrade() -> None:
     op.create_table(
         "document_page",
         sa.Column("id", sa.BigInteger, primary_key=True),
-        sa.Column(
-            "document_id", sa.BigInteger, sa.ForeignKey("app.document.id"), nullable=False
-        ),
+        sa.Column("document_id", sa.BigInteger, sa.ForeignKey("app.document.id"), nullable=False),
         sa.Column("page_no", sa.Integer, nullable=False),
         sa.Column("text", sa.Text),
         sa.Column("ocr_confidence", sa.Numeric(4, 3)),
@@ -98,16 +96,14 @@ def upgrade() -> None:
     op.create_table(
         "document_extraction",
         sa.Column("id", sa.BigInteger, primary_key=True),
-        sa.Column(
-            "document_id", sa.BigInteger, sa.ForeignKey("app.document.id"), nullable=False
-        ),
+        sa.Column("document_id", sa.BigInteger, sa.ForeignKey("app.document.id"), nullable=False),
         sa.Column("page_no", sa.Integer),
         sa.Column("extracted", JSONB, nullable=False),
         sa.Column("model", sa.Text),
         sa.Column("confidence", sa.Numeric(4, 3)),
         sa.Column(
             "status",
-            sa.Enum("proposed", "active", "superseded", "rejected", name="kb_status", create_type=False),
+            ENUM(name="kb_status", create_type=False),
             nullable=False,
             server_default="proposed",
         ),

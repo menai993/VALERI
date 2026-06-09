@@ -1,6 +1,6 @@
 # Spec — P2: Operational hardening (alerting, health, limits, backups)
 
-**Track:** Improvement Roadmap P2 (`docs/IMPROVEMENT-ROADMAP.md`) · **Builds on:** P1 inbox (`alerts` field reserved at 0), scanner/scheduler (M4/M14), auth (M8), backup compose service (M14), CI1 chat capture · **Status:** draft (awaiting owner review)
+**Track:** Improvement Roadmap P2 (`docs/IMPROVEMENT-ROADMAP.md`) · **Builds on:** P1 inbox (`alerts` field reserved at 0), scanner/scheduler (M4/M14), auth (M8), backup compose service (M14), CI1 chat capture · **Status:** implemented
 
 ## 1. Objective
 

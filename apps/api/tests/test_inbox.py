@@ -123,7 +123,14 @@ async def test_summary_counts_match_sql_for_owner(seeded_db: Engine, inbox_rows)
         assert body["pending_clarifications"] == sql["clars"] >= 1
         assert body["proposed_kb_items"] == sql["proposed"] >= 1
         assert body["tasks_due_today"] == sql["due"] >= 2
-        assert body["alerts"] == 0  # reserved for P2
+        # P2: alerts are derived ops conditions (owner/admin only).
+        from sqlalchemy.orm import Session as _S
+
+        from valeri_api.ops.runs import derive_alerts
+
+        with _S(seeded_db) as _session:
+            expected_alerts = len(derive_alerts(_session))
+        assert body["alerts"] == expected_alerts
         assert body["total"] == (
             body["pending_approvals"]
             + body["pending_clarifications"]
@@ -174,10 +181,13 @@ async def test_summary_rbac_rep_and_finance(seeded_db: Engine, inbox_rows) -> No
         owner_sql = _sql_counts(seeded_db, rep_id=None)
         assert owner_sql["proposed"] > rep_proposed
 
+        assert rep_body["alerts"] == 0  # ops alerts are an owner/admin concern (D1)
+
         await login(finance_client, FINANCE_EMAIL)
         fin_body = (await finance_client.get("/api/inbox/summary")).json()
         assert fin_body["pending_approvals"] == 0
         assert fin_body["tasks_due_today"] == 0  # finance has no task queue
+        assert fin_body["alerts"] == 0
     finally:
         await rep_client.aclose()
         await finance_client.aclose()

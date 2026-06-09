@@ -100,6 +100,21 @@ survive that machine):**
 # from the host:
 docker compose cp backup:/backups/valeri_valeri_20260603_020000.dump ./
 # then ship ./valeri_*.dump to off-site storage (rsync/scp/object store)
+# each dump has a .sha256 next to it — copy it too and check after transfer:
+sha256sum -c valeri_valeri_<ts>.dump.sha256
+```
+
+**Automatic restore-verification (P2).** Weekly (Sunday `VERIFY_HOUR`, default
+04:00) the backup service runs `verify.sh`: checks the newest dump's sha256,
+restores it into a scratch DB (`valeri_restore_check`), sanity-checks the schema
+and `core.invoice`, drops the scratch DB, and records the outcome in
+`app.job_run('backup_restore_check')`. A failed or missing check (older than
+`ops.restore_check_max_age_days`, default 8) raises a **backup_unverified**
+alert in the owner's bell and in Postavke → Podaci.
+
+**Run the verification now:**
+```sh
+docker compose exec backup sh /scripts/verify.sh
 ```
 
 ---
@@ -223,6 +238,45 @@ Each line is JSON. To filter by level with `jq`:
 ```sh
 docker compose logs api | sed 's/^[^{]*//' | jq 'select(.level=="ERROR")'
 ```
+
+---
+
+## 9a. Ops alerting, health & request gates (P2)
+
+**Where the system reports on itself.** Scheduled jobs (daily scan, weekly
+cycle, over-suppression audit, backup restore-check) write every run into
+`app.job_run` (operational telemetry, prunable after 90 days — distinct from
+the append-only `audit.*` family). Three alert conditions are derived from it
+by SQL, surfaced in the owner/admin bell and in **Postavke → Podaci**
+(`GET /api/admin/ops/status`):
+
+| Alert | Condition | Threshold (in `app.rule_config`, rule `ops`) |
+|---|---|---|
+| `job_failures` | a job's last N runs all failed | `alert_consecutive_failures` (default 2) |
+| `data_stale` | newest `core.invoice` older than N days — the scan **skips** instead of scanning old data | `scan_stale_days` (default 7) |
+| `backup_unverified` | restore-check failed or missing | `restore_check_max_age_days` (default 8) |
+
+**Health.** `GET /api/health` is always HTTP 200; the body carries the verdict:
+`{status: ok|degraded, db, llm_gateway, worker, migrations}`. `worker` reads the
+heartbeat row the worker upserts every poll (stale after
+`WORKER_HEARTBEAT_STALE_SECONDS`, default 120); `migrations` compares
+`alembic_version` to the repo head; `llm_gateway` probes LiteLLM liveness with a
+2s timeout.
+
+**Rate limits & CSRF (env-tunable, in `.env`):**
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | 5 | login attempts per client IP |
+| `RATE_LIMIT_CHAT_PER_MINUTE` | 10 | chat messages per user session |
+| `RATE_LIMIT_DEFAULT_PER_MINUTE` | 120 | everything else, per session/IP |
+| `RATE_LIMIT_ENABLED` / `CSRF_ENABLED` | true | emergency off-switches |
+
+Over-limit requests get `429 {error: {code: "rate_limited"}}`. Mutating requests
+(POST/PUT/PATCH/DELETE) must echo the `valeri_csrf` cookie in the `X-CSRF-Token`
+header (the web client does this automatically); pure-API clients must send it
+too. Sessions renew silently on `/auth/me` once past half-life — an active user
+is never logged out mid-day.
 
 ---
 

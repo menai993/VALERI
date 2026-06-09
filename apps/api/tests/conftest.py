@@ -18,6 +18,11 @@ API_ROOT = Path(__file__).resolve().parent.parent
 # explicitly injects a (fake) client. The production default remains enabled.
 os.environ.setdefault("LLM_NARRATION_ENABLED", "false")
 
+# P2 request gates are exercised explicitly in test_middleware.py; everywhere
+# else they stay off so the ~400 existing HTTP tests don't need CSRF headers.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("CSRF_ENABLED", "false")
+
 
 @pytest.fixture
 def anyio_backend() -> str:

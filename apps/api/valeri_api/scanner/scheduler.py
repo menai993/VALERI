@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from valeri_api.db import get_engine
 from valeri_api.llm.client import LLMClient
+from valeri_api.ops.runs import heartbeat, prune_job_runs, record_job_run
 from valeri_api.reports.models import OwnerReport
 from valeri_api.scanner.scan import ScanResult, run_scan
 
@@ -46,16 +47,26 @@ def run_weekly_cycle(
 
 
 def scan_job() -> None:
-    """One scheduled scan run (its own session/transaction)."""
+    """One scheduled scan run (its own session/transaction; ledgered, P2)."""
     engine = get_engine()
-    with Session(engine) as session:
-        try:
-            result = run_scan(session)
-            session.commit()
-        except Exception:
-            session.rollback()
-            logger.exception("scheduled scan failed (rolled back)")
-            return
+    try:
+        with record_job_run("daily_scan") as run:
+            with Session(engine) as session:
+                result = run_scan(session)
+                session.commit()
+            if result.skipped_reason is not None:
+                run.skip(result.skipped_reason)
+            run.detail = {
+                "inserted": result.total_inserted,
+                "suppressed": result.total_suppressed,
+                "tasks": result.tasks_created,
+            }
+    except Exception:
+        logger.exception("scheduled scan failed (rolled back)")
+        return
+    if result.skipped_reason is not None:
+        logger.warning("scheduled scan skipped: %s", result.skipped_reason)
+        return
     logger.info(
         "scheduled scan done: %d new signals, %d suppressed, %d tasks created",
         result.total_inserted,
@@ -65,16 +76,19 @@ def scan_job() -> None:
 
 
 def weekly_job() -> None:
-    """The Sunday-night job: scan → tasks → weekly owner report (M7)."""
+    """The Sunday-night job: scan → tasks → weekly owner report (M7); ledgered (P2)."""
     engine = get_engine()
-    with Session(engine) as session:
-        try:
-            scan_result, report = run_weekly_cycle(session)
-            session.commit()
-        except Exception:
-            session.rollback()
-            logger.exception("weekly cycle failed (rolled back)")
-            return
+    try:
+        with record_job_run("weekly_cycle") as run:
+            with Session(engine) as session:
+                scan_result, report = run_weekly_cycle(session)
+                # Telemetry retention happens inside the weekly job (spec D5).
+                pruned = prune_job_runs(session)
+                session.commit()
+            run.detail = {"report_id": report.id, "pruned_job_runs": pruned}
+    except Exception:
+        logger.exception("weekly cycle failed (rolled back)")
+        return
     logger.info(
         "weekly cycle done: %d new signals, %d suppressed, %d tasks, report %d (%s — %s)",
         scan_result.total_inserted,
@@ -95,14 +109,14 @@ def audit_job() -> None:
     from valeri_api.selfconfig.auditor import audit_suppressions
 
     engine = get_engine()
-    with Session(engine) as session:
-        try:
-            result = audit_suppressions(session)
-            session.commit()
-        except Exception:
-            session.rollback()
-            logger.exception("over-suppression audit failed (rolled back)")
-            return
+    try:
+        with record_job_run("over_suppression_audit"):
+            with Session(engine) as session:
+                result = audit_suppressions(session)
+                session.commit()
+    except Exception:
+        logger.exception("over-suppression audit failed (rolled back)")
+        return
     logger.info(
         "over-suppression audit done: %d checked, %d flagged, %d expired",
         result.rules_checked,
@@ -116,6 +130,7 @@ def investigation_poll_job() -> None:
     from valeri_api.investigation.runner import poll_queued
 
     try:
+        heartbeat()  # worker liveness for /api/health (P2)
         investigation_id = poll_queued()
     except Exception:
         logger.exception("investigation poll failed")

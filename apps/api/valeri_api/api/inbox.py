@@ -23,7 +23,7 @@ class InboxSummary(BaseModel):
     pending_clarifications: int
     proposed_kb_items: int
     tasks_due_today: int
-    alerts: int = 0  # reserved: P2 job-failure alerting
+    alerts: int  # P2: active ops alert conditions (owner/admin only)
     total: int
 
 
@@ -80,7 +80,13 @@ def inbox_summary(
             ({"rep": user.sales_rep_id} if user.role == "sales_rep" else {}),
         ).scalar_one()
 
+    # P2: ops alerts are an owner/admin concern (D1); others see 0.
     alerts = 0
+    if user.role in ("owner", "admin"):
+        from valeri_api.ops.runs import derive_alerts
+
+        alerts = len(derive_alerts(session))
+
     return InboxSummary(
         pending_approvals=approvals,
         pending_clarifications=clarifications,

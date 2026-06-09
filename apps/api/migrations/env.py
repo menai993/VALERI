@@ -13,6 +13,7 @@ import valeri_api.conversation.models  # noqa: F401  (registers app.conversation
 import valeri_api.domain.models  # noqa: F401  (registers core.* models on Base.metadata)
 import valeri_api.ingest.models  # noqa: F401  (registers staging.* models)
 import valeri_api.kb.models  # noqa: F401  (registers app.* knowledge-base models)
+import valeri_api.ops.models  # noqa: F401  (registers app.job_run)
 import valeri_api.reports.models  # noqa: F401  (registers app.owner_report)
 import valeri_api.rules.models  # noqa: F401  (registers app.* detection models)
 import valeri_api.signals.models  # noqa: F401  (registers app.task* models)

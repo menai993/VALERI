@@ -18,10 +18,10 @@ class TokenInvalid(Exception):
     """The token is missing, expired, or fails verification."""
 
 
-def create_token(user_id: int, role: str) -> str:
-    """Signed session token for a logged-in user."""
+def create_token(user_id: int, role: str, issued_at: datetime.datetime | None = None) -> str:
+    """Signed session token for a logged-in user (issued_at is a test seam)."""
     settings = get_settings()
-    now = datetime.datetime.now(datetime.UTC)
+    now = issued_at or datetime.datetime.now(datetime.UTC)
     payload = {
         "sub": str(user_id),
         "role": role,

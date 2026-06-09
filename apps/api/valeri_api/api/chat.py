@@ -5,6 +5,7 @@ RBAC on DATA happens inside the tool catalog (a rep chatting still cannot reach
 finance data — the tools refuse).
 """
 
+import concurrent.futures
 import json
 import logging
 from collections.abc import Iterator
@@ -33,6 +34,12 @@ from valeri_api.db import get_session, session_scope
 logger = logging.getLogger("valeri.api.chat")
 
 router = APIRouter()
+
+# P2: capture runs in a worker thread so a slow extraction can outlive the SSE
+# stream (the chip is skipped after the cap; the capture itself still lands).
+_CAPTURE_POOL = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="kb-capture"
+)
 
 
 def _capture_label(item: object) -> str:
@@ -154,26 +161,44 @@ def post_message(
     events = handle_message(session, user, conversation, body.text)
     session.commit()  # the answer (+ the user message) are persisted first
 
-    # CI1/CI2: capture knowledge synchronously in its own session, then surface what
-    # was captured inline (the capture chip) — committed before the reply closes, so
-    # the review queue refetch never races it. Prod-only (needs the gateway; tests skip).
-    if get_settings().llm_narration_enabled:
+    # CI1/CI2 + P2: capture runs AFTER the reply events stream, in a worker thread
+    # with a cap — the chip is yielded before 'done' only when capture finishes in
+    # time; a slow capture keeps running server-side (the review queue still fills).
+    # Prod-only (needs the gateway; tests skip via LLM_NARRATION_ENABLED).
+    settings = get_settings()
+    user_message_id: int | None = None
+    if settings.llm_narration_enabled:
         user_message_id = session.execute(
             select(Message.id)
             .where(Message.conversation_id == conversation.id, Message.role == "user")
             .order_by(Message.id.desc())
             .limit(1)
         ).scalar()
-        if user_message_id is not None:
-            capture_event = _capture_event(user_message_id, user.id, body.text)
-            if capture_event is not None and events and events[-1].type == "done":
-                events.insert(-1, capture_event)  # right before 'done'
+    capture_cap = settings.chat_capture_timeout_seconds
+    user_id = user.id  # plain values only — the generator outlives the request session
+    text_in = body.text
+
+    def to_frame(event: SSEEvent) -> str:
+        payload = json.dumps({"type": event.type, **event.data}, ensure_ascii=False, default=str)
+        return f"data: {payload}\n\n"
 
     def event_stream() -> Iterator[str]:
-        for event in events:
-            payload = json.dumps(
-                {"type": event.type, **event.data}, ensure_ascii=False, default=str
-            )
-            yield f"data: {payload}\n\n"
+        tail = events[-1:] if events and events[-1].type == "done" else []
+        for event in events[: len(events) - len(tail)]:
+            yield to_frame(event)
+        if user_message_id is not None:
+            future = _CAPTURE_POOL.submit(_capture_event, user_message_id, user_id, text_in)
+            try:
+                capture = future.result(timeout=capture_cap)
+                if capture is not None:
+                    yield to_frame(capture)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "kb capture for message %s exceeded %.1fs — chip skipped, capture continues",
+                    user_message_id,
+                    capture_cap,
+                )
+        for event in tail:
+            yield to_frame(event)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

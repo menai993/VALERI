@@ -50,6 +50,8 @@ class ScanResult(BaseModel):
     as_of: datetime.date
     outcomes: dict[str, InsertOutcome]
     tasks_created: int = 0
+    # P2 freshness guard: set when the scan refused to run over stale/absent data.
+    skipped_reason: str | None = None
 
     @property
     def total_inserted(self) -> int:
@@ -73,6 +75,20 @@ def run_scan(
     into an assigned task in the same transaction (M5 pipeline).
     """
     reference_date = as_of or datetime.date.today()
+
+    # P2 freshness guard: never scan stale/absent data silently — skip with a
+    # recorded reason (threshold ops.scan_stale_days in app.rule_config).
+    from valeri_api.ops.runs import data_freshness
+
+    freshness = data_freshness(session)
+    if freshness["stale"]:
+        reason = (
+            "podaci o fakturama stariji od "
+            f"{freshness['stale_days_threshold']} dana (zadnja faktura: "
+            f"{freshness['last_invoice_date'] or 'nema'})"
+        )
+        logger.warning("scan skipped: %s", reason)
+        return ScanResult(as_of=reference_date, outcomes={}, skipped_reason=reason)
 
     if recompute:
         recompute_all(session, as_of=reference_date)

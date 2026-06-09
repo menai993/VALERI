@@ -34,8 +34,14 @@ pg_dump --format=custom --no-owner --no-privileges \
 
 echo "[backup] done: $(du -h "$target" | cut -f1)"
 
-# Prune old dumps (retention window).
+# Record the dump's checksum next to it (P2): verify.sh checks it before every
+# restore test, and it catches silent corruption when dumps are copied off-host.
+(cd "$BACKUP_DIR" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256")
+echo "[backup] sha256: $(cut -d' ' -f1 "$target.sha256")"
+
+# Prune old dumps + their checksums (retention window).
 echo "[backup] pruning dumps older than ${RETENTION_DAYS} days in $BACKUP_DIR"
 find "$BACKUP_DIR" -name "valeri_*.dump" -type f -mtime "+${RETENTION_DAYS}" -print -delete || true
+find "$BACKUP_DIR" -name "valeri_*.dump.sha256" -type f -mtime "+${RETENTION_DAYS}" -print -delete || true
 
 echo "[backup] complete"

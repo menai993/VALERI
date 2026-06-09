@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     auth_secret: str = "dev-only-auth-secret-change-me-immediately"  # >= 32 bytes for HS256
     auth_token_hours: int = 12
 
+    # ── P2 ops hardening — request gates + health probes (infra knobs) ────────
+    rate_limit_enabled: bool = True
+    rate_limit_login_per_minute: int = 5  # per client IP
+    rate_limit_chat_per_minute: int = 10  # per user session
+    rate_limit_default_per_minute: int = 120  # per user session / IP
+    csrf_enabled: bool = True
+    llm_health_timeout_seconds: float = 2.0
+    worker_heartbeat_stale_seconds: int = 120
+    # Chat capture chip: how long the SSE reply waits for KB capture before
+    # closing without the chip (capture itself keeps running server-side).
+    chat_capture_timeout_seconds: float = 5.0
+
     # ── DI1a — document object storage (MinIO, S3-compatible) ────────────────
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "valeri"

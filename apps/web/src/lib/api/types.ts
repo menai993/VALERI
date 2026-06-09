@@ -164,8 +164,35 @@ export interface InboxSummary {
   pending_clarifications: number
   proposed_kb_items: number
   tasks_due_today: number
-  alerts: number // reserved: P2 job-failure alerting
+  alerts: number // P2: active ops alert conditions (owner/admin; others 0)
   total: number
+}
+
+// ── ops (P2): job ledger + freshness + alerts (Postavke → Podaci) ─────────────
+
+export interface OpsJobStatus {
+  job: string
+  last_status: string | null
+  last_run_at: string | null
+  last_ok_at: string | null
+  consecutive_failures: number
+}
+
+export interface OpsAlert {
+  kind: string
+  message: string
+}
+
+export interface OpsDataFreshness {
+  last_invoice_date: string | null
+  stale: boolean
+  stale_days_threshold: number
+}
+
+export interface OpsStatus {
+  jobs: OpsJobStatus[]
+  data_freshness: OpsDataFreshness
+  alerts: OpsAlert[]
 }
 
 // ── envelope ──────────────────────────────────────────────────────────────────

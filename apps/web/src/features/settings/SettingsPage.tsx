@@ -5,6 +5,7 @@
  */
 import { useState } from "react"
 import { Lock, Pencil, Plus } from "lucide-react"
+import { useSearchParams } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardState"
 import { DataMetricsPanel } from "@/components/widgets/DataMetricsPanel"
 import { DataTable, type Column } from "@/components/widgets/DataTable"
+import { OpsStatusPanel } from "@/components/widgets/OpsStatusPanel"
 import { ApiRequestError } from "@/lib/api/client"
 import {
   useCreateUser,
@@ -422,6 +424,12 @@ export function SettingsPage() {
   const t = useT()
   const { data: user } = useMe()
   const isAdmin = user?.role === "admin"
+  // P2: the data tab is owner+admin — the ops self-report lives there (the
+  // bell's alerts entry deep-links to it); recompute controls stay admin-only.
+  const canSeeData = isAdmin || user?.role === "owner"
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get("tab")
+  const initialTab = requestedTab === "data" && canSeeData ? "data" : "thresholds"
 
   return (
     <div className="flex flex-col gap-4">
@@ -432,10 +440,10 @@ export function SettingsPage() {
         <p className="text-sm text-text-2">{t.settings.subtitle}</p>
       </div>
 
-      <Tabs defaultValue="thresholds">
+      <Tabs defaultValue={initialTab} key={initialTab}>
         <TabsList>
           <TabsTrigger value="thresholds">{t.settings.tab_thresholds}</TabsTrigger>
-          {isAdmin && <TabsTrigger value="data">{t.settings.tab_data}</TabsTrigger>}
+          {canSeeData && <TabsTrigger value="data">{t.settings.tab_data}</TabsTrigger>}
           {isAdmin && <TabsTrigger value="users">{t.settings.tab_users}</TabsTrigger>}
           <TabsTrigger value="llm">{t.settings.tab_llm}</TabsTrigger>
         </TabsList>
@@ -443,9 +451,12 @@ export function SettingsPage() {
         <TabsContent value="thresholds">
           <ThresholdsTab isAdmin={isAdmin} />
         </TabsContent>
-        {isAdmin && (
+        {canSeeData && (
           <TabsContent value="data">
-            <DataMetricsPanel />
+            <div className="flex flex-col gap-4">
+              <OpsStatusPanel />
+              {isAdmin && <DataMetricsPanel />}
+            </div>
           </TabsContent>
         )}
         {isAdmin && (

@@ -3,6 +3,8 @@
  *
  * - credentials: 'include' — the session is an httpOnly cookie (M8 D1);
  *   JavaScript never sees the token and nothing touches localStorage.
+ * - Mutations echo the (non-HttpOnly) valeri_csrf cookie in X-CSRF-Token —
+ *   the double-submit half of the P2 CSRF gate.
  * - Error envelopes ({error: {code, message}}) become ApiRequestError.
  * - 401 responses flag the session as expired (the AuthGuard redirects).
  */
@@ -19,12 +21,25 @@ export class ApiRequestError extends Error {
   }
 }
 
+const MUTATING_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
+
+function csrfToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)valeri_csrf=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData sets its own multipart boundary Content-Type — never force JSON for it.
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData
   const baseHeaders: Record<string, string> = isFormData
     ? {}
     : { "Content-Type": "application/json" }
+  const method = (init?.method ?? "GET").toUpperCase()
+  if (MUTATING_METHODS.includes(method)) {
+    const token = csrfToken()
+    if (token) baseHeaders["X-CSRF-Token"] = token
+  }
   const response = await fetch(path, {
     credentials: "include",
     headers: { ...baseHeaders, ...init?.headers },

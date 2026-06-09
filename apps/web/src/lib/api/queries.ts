@@ -46,6 +46,7 @@ import type {
   OwnerReportSummary,
   Paginated,
   InboxSummary,
+  OpsStatus,
   RepActivityBlock,
   RuleConfigChange,
   RuleConfigEntry,
@@ -131,6 +132,16 @@ export function useInboxSummary() {
     queryFn: () => api.get<InboxSummary>("/api/inbox/summary"),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
+    retry: false,
+  })
+}
+
+/** P2: ops self-report for Postavke -> Podaci (owner/admin; 403 otherwise). */
+export function useOpsStatus(enabled = true) {
+  return useQuery<OpsStatus>({
+    queryKey: ["ops", "status"],
+    queryFn: () => api.get<OpsStatus>("/api/admin/ops/status"),
+    enabled,
     retry: false,
   })
 }

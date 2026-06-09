@@ -103,6 +103,15 @@ export function TopBar() {
                 {t.inbox.due_today}: {inbox?.tasks_due_today}
               </DropdownMenuItem>
             )}
+            {/* P2: ops alerts (owner/admin) → the system-status panel. */}
+            {(inbox?.alerts ?? 0) > 0 && (
+              <DropdownMenuItem
+                onClick={() => navigate("/postavke?tab=data")}
+                data-testid="inbox-alerts"
+              >
+                {t.inbox.alerts}: {inbox?.alerts}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -107,9 +107,12 @@ services:
       - ./litellm.config.yaml:/etc/litellm/config.yaml:ro
 
   backup:
-    # Scheduled pg_dump (M14). Runs backup.sh once a day at BACKUP_HOUR; dumps land
-    # in the pg_backups volume and are pruned after BACKUP_RETENTION_DAYS. Copy the
-    # dumps off-host regularly — see docs/RUNBOOK.md.
+    # Scheduled pg_dump (M14) + weekly restore-verification (P2). backup.sh runs
+    # once a day at BACKUP_HOUR (dumps + sha256 in the pg_backups volume, pruned
+    # after BACKUP_RETENTION_DAYS); verify.sh restores the newest dump into a
+    # scratch DB on VERIFY_DOW at VERIFY_HOUR and records the outcome in
+    # app.job_run (feeds health + bell alerts). Copy dumps off-host regularly —
+    # see docs/RUNBOOK.md.
     image: postgres:16
     restart: unless-stopped
     environment:
@@ -121,18 +124,25 @@ services:
       BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_HOUR: ${BACKUP_HOUR:-02}
+      VERIFY_DOW: ${VERIFY_DOW:-7}    # ISO day-of-week; 7 = Sunday
+      VERIFY_HOUR: ${VERIFY_HOUR:-04}
     volumes:
       - ./backup:/scripts:ro
       - pg_backups:/backups
     entrypoint: ["sh", "-c"]
     # A tiny scheduler: poll the clock; when the hour matches BACKUP_HOUR, dump,
-    # then sleep an hour so it runs once per day.
+    # then sleep an hour so it runs once per day. Same pattern for the weekly
+    # restore check (day-of-week + hour).
     command:
       - |
-        echo "[backup] service started; daily backup at ${BACKUP_HOUR:-02}:00";
+        echo "[backup] service started; daily backup at ${BACKUP_HOUR:-02}:00, weekly verify dow=${VERIFY_DOW:-7} ${VERIFY_HOUR:-04}:00";
         while true; do
           if [ "$$(date +%H)" = "${BACKUP_HOUR:-02}" ]; then
             sh /scripts/backup.sh || echo "[backup] run failed";
+            sleep 3600;
+          fi;
+          if [ "$$(date +%u)" = "${VERIFY_DOW:-7}" ] && [ "$$(date +%H)" = "${VERIFY_HOUR:-04}" ]; then
+            sh /scripts/verify.sh || echo "[backup] verify failed";
             sleep 3600;
           fi;
           sleep 1800;

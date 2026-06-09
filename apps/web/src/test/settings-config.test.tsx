@@ -27,7 +27,7 @@ const ruleConfig = {
 function mockApi() {
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string | URL | Request, _init?: RequestInit) => {
+    vi.fn((url: string | URL | Request) => {
       const path = typeof url === "string" ? url : url instanceof URL ? url.pathname : url.url
       const ok = (body: unknown) =>
         Promise.resolve(

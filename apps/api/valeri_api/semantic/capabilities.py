@@ -38,9 +38,7 @@ def _metric_descriptors(session: Session, user_role: str) -> list[CapabilityDesc
         # company/segment-wide metrics are finance data (blocked for reps, D2).
         if user_role == _REP_ROLE and "customer_id" not in param_names:
             continue
-        params = [
-            f"{param.name}{'' if param.required else '?'}" for param in definition.params
-        ]
+        params = [f"{param.name}{'' if param.required else '?'}" for param in definition.params]
         descriptors.append(
             CapabilityDescriptor(
                 kind="metric",
@@ -65,7 +63,9 @@ def _tool_descriptors(user_role: str) -> list[CapabilityDescriptor]:
             for field, info in tool.input_schema.model_fields.items()
         ]
         descriptors.append(
-            CapabilityDescriptor(kind="tool", name=name, description=tool.description, params=params)
+            CapabilityDescriptor(
+                kind="tool", name=name, description=tool.description, params=params
+            )
         )
     return descriptors
 

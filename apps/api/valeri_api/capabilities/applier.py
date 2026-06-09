@@ -41,14 +41,10 @@ def _get(session: Session, proposal_id: int) -> CapabilityProposal:
 
 
 def _declared(proposal: CapabilityProposal | ProposalCreate) -> set[str]:
-    return {
-        (param["name"] if isinstance(param, dict) else param.name) for param in proposal.params
-    }
+    return {(param["name"] if isinstance(param, dict) else param.name) for param in proposal.params}
 
 
-def create_proposal(
-    session: Session, data: ProposalCreate, user: AppUser
-) -> CapabilityProposal:
+def create_proposal(session: Session, data: ProposalCreate, user: AppUser) -> CapabilityProposal:
     """Store a drafted proposal as INERT (status='proposed').
 
     Runs the STATIC safety checks now to reject obviously-unsafe drafts early;
@@ -78,9 +74,7 @@ def create_proposal(
     return proposal
 
 
-def approve_proposal(
-    session: Session, proposal_id: int, user: AppUser
-) -> ProposalDecisionResponse:
+def approve_proposal(session: Session, proposal_id: int, user: AppUser) -> ProposalDecisionResponse:
     """Activate a proposal after the FULL safety validation (incl. EXPLAIN)."""
     proposal = _get(session, proposal_id)
     if proposal.status != "proposed":
@@ -113,9 +107,7 @@ def approve_proposal(
     )
 
 
-def reject_proposal(
-    session: Session, proposal_id: int, user: AppUser
-) -> ProposalDecisionResponse:
+def reject_proposal(session: Session, proposal_id: int, user: AppUser) -> ProposalDecisionResponse:
     """Reject a proposed metric (final)."""
     proposal = _get(session, proposal_id)
     if proposal.status != "proposed":
@@ -136,9 +128,7 @@ def reject_proposal(
     )
 
 
-def undo_proposal(
-    session: Session, proposal_id: int, user: AppUser
-) -> ProposalDecisionResponse:
+def undo_proposal(session: Session, proposal_id: int, user: AppUser) -> ProposalDecisionResponse:
     """Deactivate an ACTIVE metric: 'reverted' + a NEW undo decision (append-only)."""
     proposal = _get(session, proposal_id)
     if proposal.status != "active":

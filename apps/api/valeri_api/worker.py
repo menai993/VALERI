@@ -20,7 +20,6 @@ def main() -> None:
     # router import chain; without this, e.g. app.investigation.signal_id → app.signal
     # cannot resolve and investigation runs get stuck 'queued'.
     import valeri_api.models_registry  # noqa: F401
-
     from valeri_api.scanner.scheduler import create_scheduler
 
     scheduler = create_scheduler()

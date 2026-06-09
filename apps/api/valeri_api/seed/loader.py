@@ -4,7 +4,9 @@ from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.models import AppUser
-from valeri_api.conversation.models import Message  # noqa: F401  (registers app.message for FK resolution)
+from valeri_api.conversation.models import (
+    Message,  # noqa: F401  (registers app.message for FK resolution)
+)
 from valeri_api.crm.models import Activity, Opportunity, OpportunityStageHistory, RevenueTarget
 from valeri_api.domain.models import (
     Article,

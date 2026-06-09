@@ -38,7 +38,10 @@ class DraftFake:
     def complete(self, system: str, user: str) -> LLMResponse:
         self.captured.append({"system": system, "user": user})
         return LLMResponse(
-            text=json.dumps(self.draft, ensure_ascii=False), model=self.model, tokens=100, latency_ms=50
+            text=json.dumps(self.draft, ensure_ascii=False),
+            model=self.model,
+            tokens=100,
+            latency_ms=50,
         )
 
 
@@ -56,7 +59,9 @@ def test_answerable_gap_drafts_inert_proposal(owner_context) -> None:
 def test_non_answerable_returns_none(owner_context) -> None:
     fake = DraftFake({"can_answer": False, "reasoning": "ne može se odgovoriti iz podataka"})
     assert (
-        propose_metric_from_question(owner_context.session, "kakvo je vrijeme?", owner_context.user, client=fake)
+        propose_metric_from_question(
+            owner_context.session, "kakvo je vrijeme?", owner_context.user, client=fake
+        )
         is None
     )
 
@@ -64,7 +69,9 @@ def test_non_answerable_returns_none(owner_context) -> None:
 def test_unsafe_draft_not_surfaced(owner_context) -> None:
     unsafe = {**_GOOD_DRAFT, "name": "evil_x", "sql": "DELETE FROM core.invoice"}
     assert (
-        propose_metric_from_question(owner_context.session, "obriši fakture", owner_context.user, client=DraftFake(unsafe))
+        propose_metric_from_question(
+            owner_context.session, "obriši fakture", owner_context.user, client=DraftFake(unsafe)
+        )
         is None
     )
 
@@ -72,7 +79,9 @@ def test_unsafe_draft_not_surfaced(owner_context) -> None:
 def test_pii_draft_not_surfaced(owner_context) -> None:
     pii = {**_GOOD_DRAFT, "name": "emails_x", "sql": "SELECT c.email FROM core.customer c"}
     assert (
-        propose_metric_from_question(owner_context.session, "daj mi mejlove", owner_context.user, client=DraftFake(pii))
+        propose_metric_from_question(
+            owner_context.session, "daj mi mejlove", owner_context.user, client=DraftFake(pii)
+        )
         is None
     )
 
@@ -80,7 +89,9 @@ def test_pii_draft_not_surfaced(owner_context) -> None:
 def test_existing_metric_name_not_reproposed(owner_context) -> None:
     dup = {**_GOOD_DRAFT, "name": "turnover"}  # already a built-in metric
     assert (
-        propose_metric_from_question(owner_context.session, "promet?", owner_context.user, client=DraftFake(dup))
+        propose_metric_from_question(
+            owner_context.session, "promet?", owner_context.user, client=DraftFake(dup)
+        )
         is None
     )
 
@@ -100,7 +111,9 @@ class ChatGapFake:
             body = _GOOD_DRAFT
         else:
             body = {"text": "Pregled iz baze.", "register": "analiza"}
-        return LLMResponse(text=json.dumps(body, ensure_ascii=False), model=self.model, tokens=100, latency_ms=50)
+        return LLMResponse(
+            text=json.dumps(body, ensure_ascii=False), model=self.model, tokens=100, latency_ms=50
+        )
 
 
 def test_chat_gap_emits_capability_proposal_card(owner_context) -> None:
@@ -109,7 +122,9 @@ def test_chat_gap_emits_capability_proposal_card(owner_context) -> None:
     session.add(conversation)
     session.flush()
 
-    events = handle_message(session, user, conversation, "koliko faktura po segmentu?", client=ChatGapFake())
+    events = handle_message(
+        session, user, conversation, "koliko faktura po segmentu?", client=ChatGapFake()
+    )
     cards = [e for e in events if e.type == "card"]
     assert cards and cards[0].data["card_type"] == "capability_proposal"
     assert cards[0].data["payload"]["name"] == "invoices_per_segment"

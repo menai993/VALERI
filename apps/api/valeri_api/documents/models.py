@@ -40,7 +40,9 @@ DOC_STATUSES = (
 doc_type_enum = ENUM(*DOC_TYPES, name="doc_type", create_type=False)
 doc_source_enum = ENUM(*DOC_SOURCES, name="doc_source", create_type=False)
 doc_status_enum = ENUM(*DOC_STATUSES, name="doc_status", create_type=False)
-kb_status_enum = ENUM("proposed", "active", "superseded", "rejected", name="kb_status", create_type=False)
+kb_status_enum = ENUM(
+    "proposed", "active", "superseded", "rejected", name="kb_status", create_type=False
+)
 
 
 class Document(Base):

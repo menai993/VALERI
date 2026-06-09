@@ -544,7 +544,9 @@ async def test_list_imports_returns_run_after_import(seeded_db, export_dir: Path
         files = _export_files(export_dir)
         upload = await admin.post(
             "/api/ingest/import",
-            files={name: (f"{name}.csv", path.read_bytes(), "text/csv") for name, path in files.items()},
+            files={
+                name: (f"{name}.csv", path.read_bytes(), "text/csv") for name, path in files.items()
+            },
         )
         assert upload.status_code == 201, upload.text
         import_id = upload.json()["import_id"]

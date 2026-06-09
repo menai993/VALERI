@@ -5,7 +5,6 @@ write a reversible decision, and unsafe SQL must never activate.
 """
 
 import datetime
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import text

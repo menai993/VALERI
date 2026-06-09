@@ -82,7 +82,9 @@ def post_proposal(
     return ProposalRead.model_validate(proposal)
 
 
-@router.post("/capabilities/proposals/{proposal_id}/approve", response_model=ProposalDecisionResponse)
+@router.post(
+    "/capabilities/proposals/{proposal_id}/approve", response_model=ProposalDecisionResponse
+)
 def approve(
     proposal_id: int,
     session: Annotated[Session, Depends(get_session)],
@@ -101,7 +103,9 @@ def approve(
     return response
 
 
-@router.post("/capabilities/proposals/{proposal_id}/reject", response_model=ProposalDecisionResponse)
+@router.post(
+    "/capabilities/proposals/{proposal_id}/reject", response_model=ProposalDecisionResponse
+)
 def reject(
     proposal_id: int,
     session: Annotated[Session, Depends(get_session)],

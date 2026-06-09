@@ -96,7 +96,7 @@ def rehydrate(text: str, context: MaskingContext) -> str:
             continue
         _, _, digest = alias.partition("-")
         pattern = re.compile(rf"\bKup\w*-{re.escape(digest)}")
-        result = pattern.sub(lambda _match: real_name, result)
+        result = pattern.sub(lambda _match, name=real_name: name, result)
     return result
 
 

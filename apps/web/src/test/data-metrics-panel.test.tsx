@@ -33,7 +33,7 @@ const status: MetricsStatus = {
 function mockApi(user: User) {
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string | URL | Request, _init?: RequestInit) => {
+    vi.fn((url: string | URL | Request) => {
       const path = typeof url === "string" ? url : url instanceof URL ? url.pathname : url.url
       const respond = (body: unknown) =>
         Promise.resolve(

@@ -493,8 +493,12 @@ def test_knowledge_answer_renders_kb_content() -> None:
         "customer_name": "Hotel Hills",
         "profile_summary": "Veliki hotel, redovne narudžbe.",
         "facts": [
-            {"fact_type": "preference", "fact_key": "pakovanje", "value": "veliko",
-             "conf_band": "visoka"}
+            {
+                "fact_type": "preference",
+                "fact_key": "pakovanje",
+                "value": "veliko",
+                "conf_band": "visoka",
+            }
         ],
         "events": [{"kind": "deal", "summary": "Godišnji ugovor", "value": "72000"}],
         "relationships": [{"rel_type": "same_owner", "other_name": "Hotel Europe"}],
@@ -510,8 +514,13 @@ def test_knowledge_answer_renders_kb_content() -> None:
 def test_knowledge_answer_handles_empty_kb() -> None:
     """An empty KB renders a friendly 'nothing yet' line, not an error."""
     rendered = _knowledge_answer(
-        {"customer_name": "Kafić X", "profile_summary": None, "facts": [],
-         "events": [], "relationships": []}
+        {
+            "customer_name": "Kafić X",
+            "profile_summary": None,
+            "facts": [],
+            "events": [],
+            "relationships": [],
+        }
     )
     assert "Još nema zabilježenog znanja" in rendered
     assert "Kafić X" in rendered
@@ -610,7 +619,9 @@ def test_followup_uses_customer_focus(chat_session) -> None:
     fake = ChatFakeLLMClient(
         intent={"intent": "question", "tool": "get_customer_360", "params": {}, "confidence": 0.7}
     )
-    events = handle_message(session, owner, conversation, "šta je sve kupio taj kupac?", client=fake)
+    events = handle_message(
+        session, owner, conversation, "šta je sve kupio taj kupac?", client=fake
+    )
 
     done = next(event for event in events if event.type == "done")
     assert done.data["tool_calls"][0]["tool"] == "get_customer_360"

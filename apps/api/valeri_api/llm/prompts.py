@@ -141,10 +141,12 @@ Alati (tool) i njihovi parametri:
 - "list_signals":      {"rule": "customer_decline"|"lost_article"|"lost_category"|
                         "sleeping_customer"|"narrow_basket"|null}
 - "explain_signal":    {"signal_id": <broj>}
-- "get_customer_360":  {"customer_ref": "<pseudonim>"}   (transakcijske brojke kupca: promet, razmak)
+- "get_customer_360":  {"customer_ref": "<pseudonim>"}   (transakcijske brojke kupca:
+                        promet, razmak)
 - "get_client_knowledge": {"customer_ref": "<pseudonim>"}  (šta ZNAMO o kupcu: zabilježene
                         činjenice, dogovori/ugovori, kontekst, rizici i potvrđene veze s drugim
-                        kupcima — koristi za "šta znamo o…", "kakav je kontekst", "ima li rizika kod…")
+                        kupcima — koristi za "šta znamo o…", "kakav je kontekst",
+                        "ima li rizika kod…")
 - "create_task_draft": {"customer_ref": "<pseudonim>", "title": "<naslov zadatka>",
                         "body": "<opis>"}
 - "describe_capabilities": {}   (za "šta možeš?", "koje podatke/metrike imaš?", "šta sve znaš")
@@ -238,9 +240,11 @@ core.invoice(id, customer_id, date, total)
 core.invoice_line(id, invoice_id, article_id, qty, unit_price, line_total)
 core.article(id, category_id, code, name, active)
 core.category(id, name)
-core.customer(id, legal_entity_id, name, segment, status)   -- segment: hotel/restoran/kafić/klinika/škola
+core.customer(id, legal_entity_id, name, segment, status)
+  -- segment: hotel/restoran/kafić/klinika/škola
 core.sales_rep(id, name)
-core.customer_metrics(customer_id, turnover_60d, turnover_6m_avg_60d, last_order_date, avg_order_interval_d, segment)
+core.customer_metrics(customer_id, turnover_60d, turnover_6m_avg_60d, last_order_date,
+  avg_order_interval_d, segment)
 Prozor (window): polu-otvoreni interval (from_date, to_date]."""
 
 CAPABILITY_PROPOSAL_SYSTEM_PROMPT = """\
@@ -256,7 +260,8 @@ STROGA PRAVILA ZA SQL (kršenje znači da prijedlog neće proći sigurnosnu prov
 4. Identitet kupca vraćaj SAMO kao customer_id (kolona). NIKAD ime, e-mail, telefon ni adresu;
    tabela core.contact je zabranjena.
 5. "grain": "scalar" (jedna vrijednost, kolona AS value), "row" (jedan red), "series" (više redova).
-   "entity": customer|article|segment|company. "params": [{"name","type":integer|string|date|decimal,"required"}].
+   "entity": customer|article|segment|company.
+   "params": [{"name","type":integer|string|date|decimal,"required"}].
 6. "name": kratak engleski identifikator (mala slova, _), npr. "avg_basket_value".
    "description": kratko na bosanskom (šta metrika vraća).
 7. Brojevi se računaju u SQL-u (SUM/COUNT/AVG…), ne od tebe.

@@ -49,10 +49,38 @@ _CUSTOMER_REQUIRED_TOOLS = {"get_client_knowledge", "get_customer_360"}
 # Common words that are not distinctive enough to match a customer on (segments,
 # question words). Stored in the normalised (diacritic-free) form used for matching.
 _CANDIDATE_STOPWORDS = {
-    "hotel", "restoran", "kafic", "kafe", "klinika", "skola", "objekat", "objekt",
-    "kupac", "kupca", "kupcu", "kupce", "kupci", "firma", "firme",
-    "sta", "znas", "znate", "znamo", "kako", "koji", "koja", "koje", "ima",
-    "daj", "pokazi", "reci", "mislis", "mozes", "molim", "imamo", "imali",
+    "hotel",
+    "restoran",
+    "kafic",
+    "kafe",
+    "klinika",
+    "skola",
+    "objekat",
+    "objekt",
+    "kupac",
+    "kupca",
+    "kupcu",
+    "kupce",
+    "kupci",
+    "firma",
+    "firme",
+    "sta",
+    "znas",
+    "znate",
+    "znamo",
+    "kako",
+    "koji",
+    "koja",
+    "koje",
+    "ima",
+    "daj",
+    "pokazi",
+    "reci",
+    "mislis",
+    "mozes",
+    "molim",
+    "imamo",
+    "imali",
 }
 
 
@@ -117,7 +145,10 @@ def handle_message(
         )
         for call in agent_tool_calls:
             events.append(
-                SSEEvent(type="tool_call", data={"tool": call.get("tool"), "params": call.get("params", {})})
+                SSEEvent(
+                    type="tool_call",
+                    data={"tool": call.get("tool"), "params": call.get("params", {})},
+                )
             )
         return _finish(
             session, conversation, events, text=text, register=register, tool_calls=agent_tool_calls
@@ -193,8 +224,12 @@ def handle_message(
                 text=_unresolved_customer_reply(session, user, message_text),
                 register="analiza",
                 tool_calls=[
-                    {"tool": tool_name, "params": params, "ok": False,
-                     "error_code": "unresolved_customer"}
+                    {
+                        "tool": tool_name,
+                        "params": params,
+                        "ok": False,
+                        "error_code": "unresolved_customer",
+                    }
                 ],
             )
 

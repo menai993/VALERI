@@ -23,9 +23,7 @@ class CapabilityProposal(Base):
     params: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     sql: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="proposed")
-    source_message_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("app.message.id")
-    )
+    source_message_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("app.message.id"))
     created_by: Mapped[int | None] = mapped_column(BigInteger)
     decision_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("app.decision.id"))
     created_at: Mapped[datetime.datetime] = mapped_column(

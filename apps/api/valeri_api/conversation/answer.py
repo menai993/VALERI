@@ -47,7 +47,8 @@ def _friendly_error(tool_result: ToolResult) -> str:
     if "metrike" in err and ("nema" in err or "izračunate" in err or "izracunate" in err):
         return (
             "Za ovog kupca trenutno nemam izračunate metrike (promet, narudžbe). "
-            "Mogu provjeriti da li uopšte ima zabilježenih narudžbi ili pokušajte ponovo malo kasnije."
+            "Mogu provjeriti da li uopšte ima zabilježenih narudžbi "
+            "ili pokušajte ponovo malo kasnije."
         )
     if "requires parameters" in err or "from_date" in err or "to_date" in err or "period" in err:
         return (
@@ -268,7 +269,5 @@ def _knowledge_answer(output: dict[str, Any]) -> str:
         stated = f" — {event['value']} KM" if event.get("value") is not None else ""
         lines.append(f"- {event['kind']}: {event['summary']}{stated}")
     for rel in relationships[:5]:
-        lines.append(
-            f"- veza ({rel['rel_type']}) s kupcem {rel.get('other_name') or 'nepoznat'}"
-        )
+        lines.append(f"- veza ({rel['rel_type']}) s kupcem {rel.get('other_name') or 'nepoznat'}")
     return "\n".join(lines)

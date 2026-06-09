@@ -19,8 +19,10 @@ def test_returns_capabilities_no_numbers(owner_context) -> None:
 
 
 def test_rep_sees_fewer_metrics_than_owner(rep_context, owner_context) -> None:
-    rep = {c["name"] for c in dispatch(rep_context, "describe_capabilities", {}).output["capabilities"]}
-    owner = {c["name"] for c in dispatch(owner_context, "describe_capabilities", {}).output["capabilities"]}
+    rep_out = dispatch(rep_context, "describe_capabilities", {}).output
+    rep = {c["name"] for c in rep_out["capabilities"]}
+    owner_out = dispatch(owner_context, "describe_capabilities", {}).output
+    owner = {c["name"] for c in owner_out["capabilities"]}
     assert "top_articles" in owner and "top_articles" not in rep  # company-wide hidden from rep
     assert rep < owner
 

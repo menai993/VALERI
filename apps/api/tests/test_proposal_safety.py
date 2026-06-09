@@ -5,7 +5,6 @@ check uses a real session (rolled back).
 """
 
 import pytest
-from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from valeri_api.semantic.proposal_safety import UnsafeMetricSQL, validate_metric_sql

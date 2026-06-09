@@ -42,8 +42,11 @@ class ChatAgentFake:
         value = numbers[0] if numbers else "0"
         return LLMResponse(
             text=json.dumps(
-                {"text": f"Na osnovu prikupljenih podataka, vrijednost iznosi {value}.",
-                 "register": "analiza", "confidence": 0.9},
+                {
+                    "text": f"Na osnovu prikupljenih podataka, vrijednost iznosi {value}.",
+                    "register": "analiza",
+                    "confidence": 0.9,
+                },
                 ensure_ascii=False,
             ),
             model=self.model,
@@ -74,7 +77,8 @@ def test_loop_runs_tools_and_synthesizes(owner_context) -> None:
     assert source == "llm"
     assert register == "analiza"
     assert text.strip()
-    assert "Pouzdanost:" in text  # Principle 3: the synthesized conclusion carries a confidence band
+    # Principle 3: the synthesized conclusion carries a confidence band.
+    assert "Pouzdanost:" in text
     metric_calls = [c for c in tool_calls if c["tool"] == "query_metric"]
     assert metric_calls and metric_calls[0]["ok"] is True
 

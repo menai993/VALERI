@@ -20,9 +20,14 @@ export class ApiRequestError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // FormData sets its own multipart boundary Content-Type — never force JSON for it.
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData
+  const baseHeaders: Record<string, string> = isFormData
+    ? {}
+    : { "Content-Type": "application/json" }
   const response = await fetch(path, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { ...baseHeaders, ...init?.headers },
     ...init,
   })
 
@@ -62,4 +67,7 @@ export const api = {
     request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  // Multipart upload: let the browser set the boundary Content-Type (don't send JSON).
+  upload: <T>(path: string, form: FormData) =>
+    request<T>(path, { method: "POST", body: form, headers: {} }),
 }

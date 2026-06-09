@@ -35,9 +35,16 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       PII_SALT: ${PII_SALT}
       AUTH_SECRET: ${AUTH_SECRET}
+      # DI1a — document object storage (MinIO, S3-compatible)
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-valeri}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-valeri-minio-2026}
+      MINIO_BUCKET: ${MINIO_BUCKET:-valeri-documents}
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -68,11 +75,17 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       PII_SALT: ${PII_SALT}
       AUTH_SECRET: ${AUTH_SECRET}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-valeri}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-valeri-minio-2026}
+      MINIO_BUCKET: ${MINIO_BUCKET:-valeri-documents}
     depends_on:
       db:
         condition: service_healthy
       api:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   web:
     build:
@@ -128,6 +141,17 @@ services:
       db:
         condition: service_healthy
 
+  minio:
+    # DI1a — on-prem S3-compatible object storage for uploaded documents.
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-valeri}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-valeri-minio-2026}
+    volumes:
+      - minio_data:/data
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -147,3 +171,4 @@ volumes:
   pg_backups:
   caddy_data:
   caddy_config:
+  minio_data:

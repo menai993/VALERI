@@ -17,6 +17,9 @@ ROLE_CUSTOMER_DRAFT = "customer_draft"  # approval-gated message drafts (M7)
 ROLE_OVER_SUPPRESSION_AUDIT = "over_suppression_audit"  # the M11 auditor
 ROLE_INVESTIGATION = "investigation"  # M13 (registered now, used then)
 ROLE_INVESTIGATION_SYNTHESIS = "investigation_synthesis"  # M13 hardest cases
+ROLE_KB_GATE = "kb_gate"  # CI1 relevance gate (skip greetings/pure questions)
+ROLE_KB_EXTRACTION = "kb_extraction"  # CI1 structured knowledge extraction
+ROLE_KB_SUMMARY = "kb_summary"  # CI1 client-profile summary narration
 
 # ── tiers, cheapest → strongest (cascade walks this list upward) ──────────────
 
@@ -33,6 +36,9 @@ DEFAULT_ROLE_TIERS = {
     ROLE_OVER_SUPPRESSION_AUDIT: "tier2",
     ROLE_INVESTIGATION: "tier2",
     ROLE_INVESTIGATION_SYNTHESIS: "tier2_strong",
+    ROLE_KB_GATE: "tier1",
+    ROLE_KB_EXTRACTION: "tier1",
+    ROLE_KB_SUMMARY: "tier1",
 }
 
 # An unknown role routes to the cheapest tier — fail cheap, never fail expensive.

@@ -180,8 +180,9 @@ async def test_dashboard_envelope_on_every_ai_row(dashboard_payload) -> None:
     for bullet in summary["bullets"]:
         assert bullet["register"] in ("analiza", "preporuka", "akcija")
 
-    # Phase-2 placeholders are explicit, never fake data.
-    assert body["rep_activity"] is None  # rep activity is still C-CRM2
+    # C-CRM2: rep activity is now a real block (the seed plants activities).
+    assert body["rep_activity"] is not None
+    assert "reps" in body["rep_activity"]
     # M11: no learned rules in this fixture → the suppressed list is honestly empty.
     assert body["recently_suppressed"] == []
 
@@ -234,6 +235,58 @@ async def test_dashboard_opportunities_block(dashboard_payload) -> None:
     assert Decimal(opportunities["conversion_rate"]).quantize(Decimal("0.0001")) == expected_conv
     # Top deals are sorted by weighted value (the strongest first).
     assert len(opportunities["top"]) <= 5
+
+
+@pytest.mark.anyio
+async def test_dashboard_rep_activity_block(dashboard_payload) -> None:
+    """C-CRM2: the Aktivnosti komercijalista block matches SQL (replaces the placeholder)."""
+    import datetime
+
+    engine, body = dashboard_payload
+    rep_activity = body["rep_activity"]
+    assert rep_activity is not None
+    as_of = datetime.date.today()
+
+    with engine.connect() as conn:
+        for rep in rep_activity["reps"]:
+            sql = conn.execute(
+                text(
+                    "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE done) AS done "
+                    "FROM app.activity WHERE sales_rep_id = :rep "
+                    "AND date_trunc('month', at) = date_trunc('month', CAST(:as_of AS date))"
+                ),
+                {"rep": rep["sales_rep_id"], "as_of": as_of},
+            ).one()
+            assert rep["total"] == sql.total
+            assert rep["done"] == sql.done
+
+
+@pytest.mark.anyio
+async def test_dashboard_revenue_forecast(dashboard_payload) -> None:
+    """C-CRM2: revenue-vs-plan + run-rate forecast match SQL/Python."""
+    import calendar
+    import datetime
+    from decimal import Decimal
+
+    engine, body = dashboard_payload
+    forecast = body["revenue_forecast"]
+    assert forecast is not None
+
+    as_of = datetime.date.today()
+    with engine.connect() as conn:
+        actual = conn.execute(
+            text(
+                "SELECT COALESCE(SUM(total), 0)::numeric(14,2) FROM core.invoice "
+                "WHERE date_trunc('month', date) = date_trunc('month', CAST(:as_of AS date)) "
+                "AND date <= CAST(:as_of AS date)"
+            ),
+            {"as_of": as_of},
+        ).scalar()
+    days_in_month = calendar.monthrange(as_of.year, as_of.month)[1]
+    expected = (actual / Decimal(as_of.day) * Decimal(days_in_month)).quantize(Decimal("0.01"))
+
+    assert Decimal(forecast["actual_mtd"]) == actual
+    assert Decimal(forecast["forecast"]) == expected
 
 
 @pytest.mark.anyio

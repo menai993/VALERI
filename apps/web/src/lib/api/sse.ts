@@ -4,7 +4,7 @@
  */
 
 export interface ChatSSEEvent {
-  type: "tool_call" | "register" | "token" | "card" | "done" | "error"
+  type: "tool_call" | "register" | "token" | "card" | "capture" | "done" | "error"
   [key: string]: unknown
 }
 

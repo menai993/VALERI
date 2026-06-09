@@ -4,7 +4,8 @@ from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
 from valeri_api.auth.models import AppUser
-from valeri_api.crm.models import Opportunity, OpportunityStageHistory
+from valeri_api.conversation.models import Message  # noqa: F401  (registers app.message for FK resolution)
+from valeri_api.crm.models import Activity, Opportunity, OpportunityStageHistory, RevenueTarget
 from valeri_api.domain.models import (
     Article,
     ArticleAlias,
@@ -17,6 +18,7 @@ from valeri_api.domain.models import (
     LegalEntity,
     SalesRep,
 )
+from valeri_api.kb.models import ClientRelationship
 from valeri_api.seed.types import SeedData
 
 # FK-safe insert order: (model, SeedData attribute).
@@ -34,6 +36,9 @@ _INSERT_ORDER = [
     (AppUser, "app_users"),
     (Opportunity, "opportunities"),
     (OpportunityStageHistory, "opportunity_stage_history"),
+    (Activity, "activities"),
+    (RevenueTarget, "revenue_targets"),
+    (ClientRelationship, "client_relationships"),  # CI2 demo graph edges
 ]
 
 # Tables whose identity sequence must be advanced past the explicit seed IDs.
@@ -49,9 +54,15 @@ _SEQUENCE_TABLES = [
     "app.app_user",
     "app.opportunity",
     "app.opportunity_stage_history",
+    "app.activity",
+    "app.client_relationship",
+    # revenue_target has a TEXT primary key (period) — no identity sequence to advance.
 ]
 
 _ALL_TABLES = [
+    "app.client_relationship",
+    "app.revenue_target",
+    "app.activity",
     "app.opportunity_stage_history",
     "app.opportunity",
     "app.app_user",

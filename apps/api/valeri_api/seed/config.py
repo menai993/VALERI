@@ -96,3 +96,9 @@ class SeedConfig:
     lost_article_gap_days: int = 100  # article disappears this many days before as_of
     code_swap_days_before: int = 120  # code swap happens this many days before as_of
     sleeping_gap_days: int = 100  # sleeping customers stop ordering this long before as_of
+
+    # CI2 demo: plant confirmed KB relationships (same_owner/behavioral_twin/referral)
+    # so the graph-aware rules fire out of the box. Off by default — the shared test
+    # seed stays graph-free (the graph rules are covered by their own rule tests); the
+    # demo CLI turns it on.
+    with_kb_graph: bool = False

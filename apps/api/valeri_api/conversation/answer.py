@@ -28,21 +28,41 @@ _TOOL_REGISTERS: dict[str, str] = {
     "list_signals": "analiza",
     "explain_signal": "analiza",
     "get_customer_360": "analiza",
+    "get_client_knowledge": "analiza",
     "create_task_draft": "akcija",
     "propose_rule_change": "preporuka",
     "start_investigation": "analiza",
+    "describe_capabilities": "analiza",
 }
-
-HELP_TEXT = (
-    "Mogu odgovoriti na pitanja o prometu, kupcima, artiklima i AI signalima, "
-    'ili kreirati zadatak za kupca. Na primjer: "Koliki je promet u zadnjih 30 dana?", '
-    '"Pokaži mi kupce u padu", "Kreiraj zadatak za <ime kupca>".'
-)
 
 REFUSAL_TEXT = (
     "Nemate pristup ovim podacima. Komercijalisti mogu vidjeti promet i signale "
     "samo za svoje kupce — pitajte za kupca iz vašeg portfelja."
 )
+
+
+def _friendly_error(tool_result: ToolResult) -> str:
+    """A clean Bosnian message for a failed tool — never the raw error or internal ids."""
+    err = (tool_result.error or "").lower()
+    if "metrike" in err and ("nema" in err or "izračunate" in err or "izracunate" in err):
+        return (
+            "Za ovog kupca trenutno nemam izračunate metrike (promet, narudžbe). "
+            "Mogu provjeriti da li uopšte ima zabilježenih narudžbi ili pokušajte ponovo malo kasnije."
+        )
+    if "requires parameters" in err or "from_date" in err or "to_date" in err or "period" in err:
+        return (
+            "Za ovu metriku mi treba vremenski period. Navedite period — npr. "
+            "„zadnjih 60 dana“ ili „od 1.1. do 1.3.“."
+        )
+    if "nepoznata metrika" in err or "unknown" in err:
+        return (
+            "Ta metrika mi nije poznata. Mogu, na primjer: ukupan promet, promet po mjesecima, "
+            "promet kupca, zadnju narudžbu i prosječni razmak narudžbi."
+        )
+    return (
+        "Trenutno ne mogu dohvatiti te podatke. Pokušajte preciznije — navedite tačan naziv "
+        "kupca i, ako treba, vremenski period."
+    )
 
 
 def narrate_answer(
@@ -60,11 +80,7 @@ def narrate_answer(
     if not tool_result.ok and tool_result.error_code == "forbidden":
         return REFUSAL_TEXT, "analiza", "template"
     if not tool_result.ok:
-        return (
-            f"Nije moguće dohvatiti podatke: {tool_result.error}",
-            "analiza",
-            "template",
-        )
+        return _friendly_error(tool_result), "analiza", "template"
 
     # Investigations (M13) carry their own fixed confirmation message; rule proposals
     # (M10) carry an already-LLM-written description — neither needs re-narration
@@ -81,6 +97,9 @@ def narrate_answer(
             tool_result.output.get("register", "preporuka"),
             "template",
         )
+    # Capability self-description is a fixed list (no numbers) — render deterministically.
+    if tool_result.tool == "describe_capabilities":
+        return _template_answer(tool_result.tool, tool_result.output), "analiza", "template"
 
     # Mask the tool output (customer names → pseudonyms) before any prompt, and
     # tell the narrator which (masked) customers the question referenced so the
@@ -124,7 +143,9 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
         if output.get("value") is not None:
             return f"Vrijednost metrike '{output['metric']}': {output['value']}."
         rows = output.get("rows", [])
-        lines = [f"- {row}" for row in rows[:12]]
+        if not rows:
+            return f"Nema podataka za metriku '{output['metric']}' u traženom periodu."
+        lines = [_format_metric_row(row) for row in rows[:12]]
         return f"Rezultat metrike '{output['metric']}':\n" + "\n".join(lines)
 
     if tool == "compare_periods":
@@ -164,6 +185,9 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
             f"prosječni razmak narudžbi {output.get('avg_order_interval_d')} dana."
         )
 
+    if tool == "get_client_knowledge":
+        return _knowledge_answer(output)
+
     if tool == "create_task_draft":
         return (
             f"Zadatak '{output['title']}' je kreiran (status: {output['status']}) i dodijeljen "
@@ -191,4 +215,60 @@ def _template_answer(tool: str, output: dict[str, Any]) -> str:
     if tool == "start_investigation":
         return output.get("message", "Istraga je pokrenuta i obrađuje se u pozadini.")
 
+    if tool == "describe_capabilities":
+        caps = output.get("capabilities", [])
+        metrics = [c for c in caps if c["kind"] == "metric"]
+        tools = [c for c in caps if c["kind"] == "tool"]
+        lines = ["Evo šta mogu odgovoriti i uraditi:"]
+        if metrics:
+            lines.append("Metrike (brojke iz baze):")
+            lines += [f"- {c['description']}" for c in metrics]
+        if tools:
+            lines.append("Akcije i pretrage:")
+            lines += [f"- {c['description']}" for c in tools]
+        return "\n".join(lines)
+
     return f"Podaci iz baze: {output}"
+
+
+def _format_metric_row(row: dict[str, Any]) -> str:
+    """Readable Bosnian line for one series-metric row — verbatim SQL values only."""
+    label = (
+        row.get("name")
+        or row.get("customer_name")
+        or row.get("category")
+        or (str(row["month"]) if row.get("month") is not None else None)
+    )
+    amount = row.get("revenue", row.get("value"))
+    if label is not None and amount is not None:
+        qty = f", količina {row['qty']}" if row.get("qty") is not None else ""
+        return f"- {label}: {amount} KM{qty}"
+    return f"- {row}"
+
+
+def _knowledge_answer(output: dict[str, Any]) -> str:
+    """Deterministic Bosnian rendering of the confirmed KB about one customer."""
+    name = output.get("customer_name") or "kupac"
+    facts = output.get("facts", [])
+    events = output.get("events", [])
+    relationships = output.get("relationships", [])
+
+    if not (output.get("profile_summary") or facts or events or relationships):
+        return f"Još nema zabilježenog znanja o kupcu {name}."
+
+    lines = [f"Šta VALERI zna o kupcu {name}:"]
+    if output.get("profile_summary"):
+        lines.append(output["profile_summary"])
+    for fact in facts[:5]:
+        lines.append(
+            f"- {fact['fact_type']}/{fact['fact_key']}: {fact['value']} "
+            f"(pouzdanost: {fact['conf_band']})"
+        )
+    for event in events[:5]:
+        stated = f" — {event['value']} KM" if event.get("value") is not None else ""
+        lines.append(f"- {event['kind']}: {event['summary']}{stated}")
+    for rel in relationships[:5]:
+        lines.append(
+            f"- veza ({rel['rel_type']}) s kupcem {rel.get('other_name') or 'nepoznat'}"
+        )
+    return "\n".join(lines)

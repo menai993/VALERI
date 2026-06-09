@@ -10,15 +10,20 @@ Narration is generated fully and then streamed (spec D3); the SSE event contract
 """
 
 import logging
+import re
 from typing import Any
 
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
+from valeri_api.auth.deps import visible_customer_ids
 from valeri_api.auth.models import AppUser
-from valeri_api.conversation.answer import HELP_TEXT, narrate_answer
+from valeri_api.config import get_settings
+from valeri_api.conversation.answer import narrate_answer
+from valeri_api.conversation.assistant import narrate_assistant
 from valeri_api.conversation.intent import classify_intent
 from valeri_api.conversation.models import Conversation, Message
-from valeri_api.conversation.resolution import resolve_entities
+from valeri_api.conversation.resolution import normalise, resolve_entities
 from valeri_api.conversation.schemas import SSEEvent
 from valeri_api.llm.client import LLMClient
 from valeri_api.llm.masking import MaskingContext, mask_text
@@ -34,6 +39,20 @@ HISTORY_WINDOW = 6
 _INTENT_DEFAULT_TOOL = {
     "feedback_config": "propose_rule_change",
     "investigation": "start_investigation",
+}
+
+# Tools that are meaningless without a specific customer. If entity resolution
+# couldn't bind one, we ask which customer (listing candidates) instead of
+# dispatching with empty params and surfacing a raw validation error.
+_CUSTOMER_REQUIRED_TOOLS = {"get_client_knowledge", "get_customer_360"}
+
+# Common words that are not distinctive enough to match a customer on (segments,
+# question words). Stored in the normalised (diacritic-free) form used for matching.
+_CANDIDATE_STOPWORDS = {
+    "hotel", "restoran", "kafic", "kafe", "klinika", "skola", "objekat", "objekt",
+    "kupac", "kupca", "kupcu", "kupce", "kupci", "firma", "firme",
+    "sta", "znas", "znate", "znamo", "kako", "koji", "koja", "koje", "ima",
+    "daj", "pokazi", "reci", "mislis", "mozes", "molim", "imamo", "imali",
 }
 
 
@@ -64,26 +83,121 @@ def handle_message(
 
     # ── 3. intent classification (Tier-1, masked) ─────────────────────────────
     classification = classify_intent(
-        session, masked_text, masked_history=masked_history, client=client
+        session, masked_text, masked_history=masked_history, client=client, user_role=user.role
     )
 
     # feedback_config / investigation route to their default tools when the model
     # didn't already pick one.
     tool_name = classification.tool or _INTENT_DEFAULT_TOOL.get(classification.intent)
 
-    # ── 4. help / no tool → static guidance, no data access ──────────────────
-    if classification.intent == "help" or tool_name is None:
+    # Honesty gate (CSA): never dispatch query_metric with a metric the registry
+    # doesn't have — that is how the router used to force-fit a wrong answer. Treat
+    # an unregistered/missing metric as "no capability fits" and answer honestly.
+    if tool_name == "query_metric" and not _is_known_metric(
+        session, classification.params.get("metric")
+    ):
+        tool_name = None
+
+    # ── 4a. analysis → bounded multi-step agent loop (CSA Phase 2) ───────────────
+    # A comparison / multi-metric / data-grounded "why" question needs several
+    # SQL-backed tool calls and one synthesized answer; the deep async 'Istraži'
+    # agent stays for explicit investigations.
+    if classification.intent == "analysis":
+        from valeri_api.conversation.agent import run_chat_agent
+        from valeri_api.conversation.context import prior_context
+
+        text, register, agent_tool_calls, _source = run_chat_agent(
+            session,
+            user,
+            masked_text,
+            context,
+            message_id=user_message.id,
+            prior_context=prior_context(session, conversation.id),
+            client=client,
+        )
+        for call in agent_tool_calls:
+            events.append(
+                SSEEvent(type="tool_call", data={"tool": call.get("tool"), "params": call.get("params", {})})
+            )
+        return _finish(
+            session, conversation, events, text=text, register=register, tool_calls=agent_tool_calls
+        )
+
+    # ── 4b. no fitting tool → data-aware assistant reply (read-only, no mutation) ──
+    # A validly-chosen tool is dispatched even when the model tagged the intent
+    # "help" (e.g. "šta sve možeš?" → describe_capabilities); only a genuinely
+    # empty tool falls through to the assistant.
+    if tool_name is None:
+        # Capability self-configuration (CSA Phase 3b): a genuine question-gap → try to
+        # DRAFT a new metric (inert, human-approved, reversible) before the generic
+        # reply. Only for question intent (never greetings); skipped without the gateway.
+        # Run on a question-gap when we can call the LLM: an injected client (tests)
+        # or narration enabled (prod). Skipped when neither, to avoid stray calls.
+        if classification.intent == "question" and (
+            client is not None or get_settings().llm_narration_enabled
+        ):
+            from valeri_api.capabilities.proposer import propose_metric_from_question
+
+            proposal = propose_metric_from_question(
+                session, masked_text, user, source_message_id=user_message.id, client=client
+            )
+            if proposal is not None:
+                return _finish(
+                    session,
+                    conversation,
+                    events,
+                    text=(
+                        f"Trenutno nemam metriku za to, ali mogu je dodati: "
+                        f"„{proposal.description}“. Odobri prijedlog da je aktiviram "
+                        "(vidljivo i reverzibilno)."
+                    ),
+                    register="preporuka",
+                    tool_calls=[{"tool": "propose_capability", "ok": True}],
+                    card={
+                        "card_type": "capability_proposal",
+                        "payload": {
+                            "id": proposal.id,
+                            "name": proposal.name,
+                            "description": proposal.description,
+                            "sql": proposal.sql,
+                            "params": proposal.params,
+                        },
+                    },
+                )
+
+        text, register, _ = narrate_assistant(session, user, context, client=client)
         return _finish(
             session,
             conversation,
             events,
-            text=HELP_TEXT,
-            register="analiza",
+            text=text,
+            register=register,
             tool_calls=[],
         )
 
     # ── 5. dispatch the tool (RBAC + validation + logging inside) ────────────
     params = _resolve_param_refs(classification.params, context)
+
+    # A customer-scoped tool with no resolvable customer: first carry the customer
+    # in conversational focus (a follow-up like "šta je kupio kupac?" means the one
+    # we were just discussing); only if there's none do we ask which one.
+    if tool_name in _CUSTOMER_REQUIRED_TOOLS and "customer_id" not in params:
+        focus_id = _focus_customer_id(session, conversation, user)
+        if focus_id is not None:
+            params["customer_id"] = focus_id
+        else:
+            return _finish(
+                session,
+                conversation,
+                events,
+                text=_unresolved_customer_reply(session, user, message_text),
+                register="analiza",
+                tool_calls=[
+                    {"tool": tool_name, "params": params, "ok": False,
+                     "error_code": "unresolved_customer"}
+                ],
+            )
+
     tool_context = ToolContext(
         session=session, user=user, message_id=user_message.id, llm_client=client
     )
@@ -125,6 +239,15 @@ def handle_message(
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
+def _is_known_metric(session: Session, metric: Any) -> bool:
+    """True iff `metric` is a known metric — built-in OR approved overlay (honesty gate)."""
+    if not metric:
+        return False
+    from valeri_api.semantic.registry import resolve_metric
+
+    return resolve_metric(session, metric) is not None
+
+
 def _masked_history(
     session: Session, conversation: Conversation, context: MaskingContext
 ) -> list[str]:
@@ -144,6 +267,70 @@ def _masked_history(
         resolved = resolve_entities(session, message.content)
         history.append(f"{message.role}: {mask_text(message.content, resolved, context)}")
     return history
+
+
+def _focus_customer_id(session: Session, conversation: Conversation, user: AppUser) -> int | None:
+    """The customer currently in conversational focus: the most recently mentioned one.
+
+    Lets a pronoun/anaphor follow-up ("šta je kupio kupac?") resolve to the customer
+    just discussed instead of re-asking. RBAC-scoped: a rep never inherits a focus
+    customer outside their book.
+    """
+    scope = visible_customer_ids(user, session)
+    rows = (
+        session.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.id.desc())
+        .limit(HISTORY_WINDOW)
+        .all()
+    )
+    for message in rows:
+        if not message.content:
+            continue
+        for _matched, customer_id, _name in resolve_entities(session, message.content):
+            if scope is None or customer_id in scope:
+                return customer_id
+    return None
+
+
+def _customer_candidates(session: Session, user: AppUser, message_text: str) -> list[str]:
+    """Customers whose name shares a distinctive token with the message (RBAC-scoped).
+
+    Cheap, deterministic disambiguation source: for a mention like "hotel aria" that
+    spans several objects, this returns those objects so we can ask which one.
+    """
+    tokens = {
+        token
+        for token in re.findall(r"[0-9a-zčćžšđ]+", normalise(message_text))
+        if len(token) >= 4 and token not in _CANDIDATE_STOPWORDS
+    }
+    if not tokens:
+        return []
+
+    scope = visible_customer_ids(user, session)
+    rows = session.execute(sql_text("SELECT id, name FROM core.customer ORDER BY id")).all()
+    candidates = [
+        name
+        for customer_id, name in ((row.id, row.name) for row in rows)
+        if (scope is None or customer_id in scope)
+        and any(token in normalise(name) for token in tokens)
+    ]
+    return candidates[:6]
+
+
+def _unresolved_customer_reply(session: Session, user: AppUser, message_text: str) -> str:
+    """A short Bosnian clarification when a customer-scoped question names no clear customer."""
+    candidates = _customer_candidates(session, user, message_text)
+    if candidates:
+        listed = ", ".join(candidates)
+        return (
+            "Nisam siguran na kojeg tačno kupca mislite — pronašao sam više mogućnosti: "
+            f"{listed}. Na kojeg mislite? Navedite tačan naziv."
+        )
+    return (
+        "Nisam prepoznao kupca u Vašem pitanju. Možete li navesti tačan naziv kupca "
+        "(kako je zaveden u bazi)?"
+    )
 
 
 def _resolve_param_refs(params: dict[str, Any], context: MaskingContext) -> dict[str, Any]:

@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 
 from tests.conftest import login, make_client
 from valeri_api.auth.models import AppUser
-from valeri_api.conversation.models import Conversation
+from valeri_api.conversation.answer import _knowledge_answer
+from valeri_api.conversation.assistant import _assistant_template
+from valeri_api.conversation.models import Conversation, Message
 from valeri_api.conversation.service import handle_message
 from valeri_api.llm.client import LLMResponse
 from valeri_api.scanner.scan import run_scan
@@ -376,7 +378,12 @@ def test_every_call_in_tool_call_log(chat_session) -> None:
 
 
 def test_intent_fallback_on_invalid_llm_output(chat_session) -> None:
-    """Persistently malformed router output → help reply, never an exception or raw output."""
+    """Persistently malformed LLM output → a data-aware fallback, never an exception or raw output.
+
+    Both the router AND the assistant narration fail here (the fake never produces valid
+    JSON), so the deterministic fallback fires — and it still names real SQL counts instead
+    of repeating one static line.
+    """
     session, owner, _, _ = chat_session
 
     class BrokenFake:
@@ -388,13 +395,249 @@ def test_intent_fallback_on_invalid_llm_output(chat_session) -> None:
                 text="ovo nikako nije json", model=self.model, tokens=10, latency_ms=5
             )
 
+    # The real open-signal count the deterministic fallback must report.
+    open_signals = session.execute(
+        text("SELECT COUNT(*) FROM app.signal WHERE status IN ('new', 'tasked')")
+    ).scalar()
+
     conversation = _new_conversation(session, owner)
     events = handle_message(session, owner, conversation, "asdfghjkl", client=BrokenFake())
 
     reply = _reply_text(events)
-    assert "Mogu odgovoriti" in reply  # the help text
     assert _reply_register(events) == "analiza"
     assert "nije json" not in reply  # raw model output never reaches the user
+    assert "Mogu odgovoriti" not in reply  # NOT the old canned line
+    assert str(open_signals) in reply  # a real SQL count is surfaced
+    assert "VALERI" in reply or "signal" in reply.lower()
+
+
+def test_help_intent_uses_data_aware_assistant(chat_session) -> None:
+    """A greeting (intent=help) → the LLM assistant reply grounded in the SQL bundle, not a tool."""
+    session, owner, _, _ = chat_session
+
+    fake = ChatFakeLLMClient(
+        intent={"intent": "help", "tool": None, "params": {}, "confidence": 0.2}
+    )
+
+    conversation = _new_conversation(session, owner)
+    events = handle_message(session, owner, conversation, "Zdravo VALERI", client=fake)
+
+    # The reply is the narrated assistant answer (the fake echoes a valid ChatAnswer),
+    # tagged analiza, with NO tool dispatched.
+    assert _reply_register(events) == "analiza"
+    assert _reply_text(events)
+    assert not any(event.type == "tool_call" for event in events)
+    done = next(event for event in events if event.type == "done")
+    assert done.data["tool_calls"] == []
+
+    # The assistant call was masked (no real customer name in any prompt).
+    bundle_prompts = "\n".join(item["user"] for item in fake.captured)
+    leaked = session.execute(
+        text(
+            "SELECT c.name FROM app.signal s JOIN core.customer c ON c.id = s.customer_id "
+            "WHERE s.rule = 'customer_decline' AND s.status IN ('new', 'tasked') LIMIT 1"
+        )
+    ).scalar()
+    if leaked:
+        assert leaked not in bundle_prompts
+
+
+def test_knowledge_question_routes_to_kb(chat_session) -> None:
+    """'Šta znamo o <kupac>' → get_client_knowledge → captured KB content, not a fallback."""
+    session, owner, _, _ = chat_session
+
+    customer = session.execute(text("SELECT id, name FROM core.customer ORDER BY id LIMIT 1")).one()
+
+    # Plant a confirmed KB fact so the tool has something to return.
+    session.execute(
+        text(
+            "INSERT INTO app.client_fact "
+            "(customer_id, fact_type, fact_key, value, source, confidence, conf_band, status, "
+            " evidence_text) "
+            "VALUES (:cid, 'preference', 'pakovanje', '{\"vrijednost\": \"veliko\"}', 'stated', "
+            "0.9, 'visoka', 'active', 'Vole velika pakovanja.')"
+        ),
+        {"cid": customer.id},
+    )
+    session.flush()
+
+    fake = ChatFakeLLMClient(
+        intent={
+            "intent": "question",
+            "tool": "get_client_knowledge",
+            "params": {"customer_ref": "{{KUPAC}}"},
+            "confidence": 0.9,
+        }
+    )
+
+    conversation = _new_conversation(session, owner)
+    events = handle_message(
+        session, owner, conversation, f"Šta znamo o kupcu {customer.name}?", client=fake
+    )
+
+    # Routed to the KB tool and logged.
+    done = next(event for event in events if event.type == "done")
+    assert done.data["tool_calls"][0]["tool"] == "get_client_knowledge"
+    assert done.data["tool_calls"][0]["ok"] is True
+
+    # No real customer name reached any prompt; the human reply is rehydrated.
+    all_prompts = "\n".join(item["system"] + "\n" + item["user"] for item in fake.captured)
+    assert customer.name not in all_prompts
+    assert "Kupac-" in all_prompts
+    assert _reply_register(events) == "analiza"
+
+
+def test_knowledge_answer_renders_kb_content() -> None:
+    """The deterministic KB rendering surfaces profile/facts/events/relationships."""
+    output = {
+        "customer_name": "Hotel Hills",
+        "profile_summary": "Veliki hotel, redovne narudžbe.",
+        "facts": [
+            {"fact_type": "preference", "fact_key": "pakovanje", "value": "veliko",
+             "conf_band": "visoka"}
+        ],
+        "events": [{"kind": "deal", "summary": "Godišnji ugovor", "value": "72000"}],
+        "relationships": [{"rel_type": "same_owner", "other_name": "Hotel Europe"}],
+    }
+    rendered = _knowledge_answer(output)
+    assert "Hotel Hills" in rendered
+    assert "Veliki hotel" in rendered
+    assert "pakovanje" in rendered
+    assert "Godišnji ugovor" in rendered
+    assert "Hotel Europe" in rendered
+
+
+def test_knowledge_answer_handles_empty_kb() -> None:
+    """An empty KB renders a friendly 'nothing yet' line, not an error."""
+    rendered = _knowledge_answer(
+        {"customer_name": "Kafić X", "profile_summary": None, "facts": [],
+         "events": [], "relationships": []}
+    )
+    assert "Još nema zabilježenog znanja" in rendered
+    assert "Kafić X" in rendered
+
+
+def test_assistant_template_names_real_counts() -> None:
+    """The deterministic fallback reports the real SQL counts, not a static line."""
+    bundle = {
+        "otvoreni_signali": 7,
+        "otvoreni_zadaci": 3,
+        "kupci_u_padu": [{"customer_id": 1, "customer_name": "Hotel Hills"}],
+        "promet_30d": 142300,
+    }
+    rendered = _assistant_template(bundle)
+    assert "7" in rendered and "3" in rendered
+    assert "142300" in rendered
+    assert "Hotel Hills" in rendered
+    assert "Mogu odgovoriti" not in rendered  # not the retired static line
+
+
+def test_kb_question_without_resolvable_customer_clarifies(chat_session) -> None:
+    """A customer-scoped tool with no resolvable customer → a clarification, not a raw error."""
+    session, owner, _, _ = chat_session
+
+    fake = ChatFakeLLMClient(
+        intent={
+            "intent": "question",
+            "tool": "get_client_knowledge",
+            "params": {},  # the router couldn't bind a customer
+            "confidence": 0.7,
+        }
+    )
+
+    conversation = _new_conversation(session, owner)
+    events = handle_message(session, owner, conversation, "šta znaš o tom kupcu?", client=fake)
+
+    reply = _reply_text(events)
+    assert "Neispravni parametri" not in reply  # never the raw validation error
+    assert "kupca" in reply.lower()
+    # Nothing was dispatched; the attempt is recorded as unresolved.
+    assert not any(event.type == "tool_call" for event in events)
+    done = next(event for event in events if event.type == "done")
+    assert done.data["tool_calls"][0]["error_code"] == "unresolved_customer"
+
+
+def test_unresolved_customer_reply_lists_candidates(chat_session) -> None:
+    """When the message names a (possibly multi-object) customer, candidates are offered."""
+    from valeri_api.conversation.service import _customer_candidates, _unresolved_customer_reply
+
+    session, owner, _, _ = chat_session
+    name = session.execute(text("SELECT name FROM core.customer ORDER BY id LIMIT 1")).scalar()
+
+    candidates = _customer_candidates(session, owner, name)
+    assert name in candidates
+
+    reply = _unresolved_customer_reply(session, owner, name)
+    assert name in reply
+    assert "Nisam siguran" in reply
+
+
+def test_rehydrate_handles_declined_pseudonym() -> None:
+    """The model inflecting 'Kupac-x' → 'Kupca-x' must still rehydrate to the real name."""
+    from valeri_api.llm.masking import MaskingContext, rehydrate
+
+    context = MaskingContext()
+    alias = context.register_customer(8, "Hotel Aria — recepcija i lobi")
+    declined = alias.replace("Kupac", "Kupca")  # genitive, as the model often writes it
+
+    out = rehydrate(f"Ukupan promet {declined} iznosi 100 KM.", context)
+    assert "Hotel Aria — recepcija i lobi" in out
+    assert "Kupac-" not in out and "Kupca-" not in out  # no pseudonym leaks
+
+
+def test_followup_uses_customer_focus(chat_session) -> None:
+    """A follow-up with no name reuses the customer just discussed instead of re-asking."""
+    session, owner, _, _ = chat_session
+    customer = session.execute(
+        text(
+            "SELECT c.id, c.name FROM core.customer c "
+            "JOIN core.customer_metrics m ON m.customer_id = c.id "
+            "WHERE m.turnover_60d > 0 ORDER BY c.id LIMIT 1"
+        )
+    ).one()
+
+    conversation = _new_conversation(session, owner)
+    # A prior turn established the customer in focus.
+    session.add(
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=f"Podaci za kupca {customer.name}.",
+        )
+    )
+    session.flush()
+
+    fake = ChatFakeLLMClient(
+        intent={"intent": "question", "tool": "get_customer_360", "params": {}, "confidence": 0.7}
+    )
+    events = handle_message(session, owner, conversation, "šta je sve kupio taj kupac?", client=fake)
+
+    done = next(event for event in events if event.type == "done")
+    assert done.data["tool_calls"][0]["tool"] == "get_customer_360"
+    assert done.data["tool_calls"][0]["ok"] is True
+    reply = _reply_text(events)
+    assert "Nisam prepoznao" not in reply and "Nisam siguran" not in reply
+
+
+def test_friendly_error_hides_raw_tool_error(chat_session) -> None:
+    """A tool failure (missing period) becomes a clean Bosnian hint, not the raw error."""
+    session, owner, _, _ = chat_session
+
+    fake = ChatFakeLLMClient(
+        intent={
+            "intent": "question",
+            "tool": "query_metric",
+            "params": {"metric": "turnover"},  # no dates → the tool rejects it
+            "confidence": 0.8,
+        }
+    )
+    conversation = _new_conversation(session, owner)
+    events = handle_message(session, owner, conversation, "izračunaj promet", client=fake)
+
+    reply = _reply_text(events)
+    assert "period" in reply.lower()
+    assert "requires parameters" not in reply
+    assert "Metric" not in reply  # no raw English / internal wording leaks
 
 
 def test_action_intent_creates_task_draft(chat_session) -> None:

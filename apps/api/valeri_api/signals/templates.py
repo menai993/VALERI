@@ -15,6 +15,9 @@ _TITLES = {
     "lost_category": "Izgubljena kategorija kod kupca: {customer_name}",
     "sleeping_customer": "Uspavani kupac: {customer_name}",
     "narrow_basket": "Prilika za proširenje asortimana: {customer_name}",
+    "group_risk": "Rizik grupe povezanih kupaca: {customer_name}",
+    "behavioral_twin_warning": "Rana opomena (slični kupac): {customer_name}",
+    "referral_source_risk": "Rizik izvora preporuke: {customer_name}",
 }
 
 _ACTIONS = {
@@ -32,6 +35,17 @@ _ACTIONS = {
     ),
     "narrow_basket": (
         "Predstaviti kupcu kategorije koje slični kupci redovno naručuju (cross-sell)."
+    ),
+    "group_risk": (
+        "Pregledati cijelu grupu povezanih kupaca i kontaktirati najugroženije članove "
+        "prije nego pad zahvati ostale objekte."
+    ),
+    "behavioral_twin_warning": (
+        "Proaktivno kontaktirati kupca i ponuditi podršku — rana intervencija prije nego "
+        "rizik preraste u stvarni pad."
+    ),
+    "referral_source_risk": (
+        "Provjeriti i reaktivirati izvor preporuke te održati odnos s preporučenim kupcem."
     ),
 }
 
@@ -83,6 +97,26 @@ def render_body(rule: str, evidence: dict[str, Any], context: dict[str, Any]) ->
         body = (
             f"Kupac {customer} naručuje iz svega {evidence['n_categories']} kategorije/a, "
             f"dok slični kupci (segment: {evidence['segment']}) redovno naručuju i: {missing}."
+        )
+    elif rule == "group_risk":
+        body = (
+            f"Grupa povezanih kupaca (vlasništvo/lanac) bilježi pad: kombinovani promet "
+            f"u zadnjih 60 dana iznosi {evidence['group_turnover_60d']} KM, dok je uobičajeni "
+            f"nivo {evidence['group_baseline_60d']} KM (omjer {evidence['ratio']}). "
+            f"Kupac {customer} je najugroženiji član grupe."
+        )
+    elif rule == "behavioral_twin_warning":
+        body = (
+            f"Kupac {customer} pokazuje rane znakove rizika slične ranije ugroženom kupcu "
+            f"(\"blizancu\"): razmak od zadnje narudžbe je {evidence['gap_days']} dana, "
+            f"a omjer razvlačenja narudžbi je {evidence['stretch_ratio']}. "
+            f"Preporučuje se rana intervencija."
+        )
+    elif rule == "referral_source_risk":
+        body = (
+            f"Kupac {customer} je došao putem preporuke, a izvor preporuke je utihnuo — "
+            f"bez narudžbe {evidence['referrer_gap_days']} dana. Tihi preporučitelj povećava "
+            f"rizik za preporučene kupce; preporučuje se provjera odnosa."
         )
     else:
         raise ValueError(f"No body template for rule {rule!r}")

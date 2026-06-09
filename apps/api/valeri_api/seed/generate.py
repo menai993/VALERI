@@ -2,10 +2,12 @@
 
 import random
 
+from valeri_api.seed.activity import generate_activities, generate_revenue_targets
 from valeri_api.seed.articles import generate_articles, generate_categories, select_code_swaps
 from valeri_api.seed.config import SeedConfig
 from valeri_api.seed.entities import generate_contacts, generate_entities, generate_reps
 from valeri_api.seed.invoices import build_baskets, generate_invoices
+from valeri_api.seed.kb_graph import generate_client_relationships
 from valeri_api.seed.opportunities import generate_opportunities
 from valeri_api.seed.planted import (
     build_manifest,
@@ -50,7 +52,14 @@ def generate(config: SeedConfig) -> SeedData:
         rng, customers, customer_reps, config.as_of
     )
 
-    # 7. Ground-truth manifest (measured from the generated data).
+    # 7. Phase-2 CRM (C-CRM2): demo rep activities + the monthly revenue plan.
+    activities = generate_activities(rng, sales_reps, customers, config.as_of)
+    revenue_targets = generate_revenue_targets(rng, config.as_of)
+
+    # 7b. CI2 (demo only): confirmed KB relationships so the graph-aware rules fire.
+    client_relationships = generate_client_relationships(plan, customers, config)
+
+    # 8. Ground-truth manifest (measured from the generated data).
     manifest = build_manifest(config, plan, customers, invoices, invoice_lines)
 
     return SeedData(
@@ -68,4 +77,7 @@ def generate(config: SeedConfig) -> SeedData:
         app_users=app_users,
         opportunities=opportunities,
         opportunity_stage_history=opportunity_stage_history,
+        activities=activities,
+        revenue_targets=revenue_targets,
+        client_relationships=client_relationships,
     )

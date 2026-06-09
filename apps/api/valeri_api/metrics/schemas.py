@@ -134,9 +134,12 @@ class DashboardResponse(BaseModel):
     ai_insights: list[InsightRow]
     customers_at_risk: list[AtRiskRow]
     lost_articles: list[LostArticleRow]
-    rep_activity: None = None  # Phase 2 placeholder — never fake data
+    # C-CRM2: per-rep activity rollup (Aktivnosti komercijalista) — None when no activity.
+    rep_activity: dict[str, Any] | None = None
     owner_report_summary: dict[str, Any] | None = None  # M7 extract_summary payload
     recently_suppressed: list[RecentlySuppressedRow] = []  # M11: the self-config audit trail
     # C-CRM1: the opportunity pipeline summary (Otvorene prilike / Stopa konverzije /
     # Najveće prilike) — None when the CRM track is not in use (no opportunities).
     opportunities: dict[str, Any] | None = None
+    # C-CRM2: revenue-vs-plan + run-rate forecast — None when no target exists.
+    revenue_forecast: dict[str, Any] | None = None

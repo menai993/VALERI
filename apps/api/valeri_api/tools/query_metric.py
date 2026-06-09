@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from valeri_api.semantic.query_builder import MetricValidationError, run_metric
-from valeri_api.semantic.registry import load_registry
+from valeri_api.semantic.registry import resolve_metric
 from valeri_api.tools.base import ToolContext, ToolDefinition, ToolError, ToolPermissionError
 
 ALL_ROLES = ("owner", "admin", "finance", "sales_rep")
@@ -27,6 +27,7 @@ class QueryMetricInput(BaseModel):
     segment: str | None = None
     from_date: datetime.date | None = None
     to_date: datetime.date | None = None
+    limit: int | None = None
 
 
 class QueryMetricOutput(BaseModel):
@@ -40,8 +41,7 @@ class QueryMetricOutput(BaseModel):
 
 
 def _run(tool_input: QueryMetricInput, context: ToolContext) -> QueryMetricOutput:
-    registry = load_registry()
-    definition = registry.get(tool_input.metric)
+    definition = resolve_metric(context.session, tool_input.metric)
     if definition is None:
         raise ToolError(f"Nepoznata metrika: {tool_input.metric!r}")
 
@@ -55,6 +55,7 @@ def _run(tool_input: QueryMetricInput, context: ToolContext) -> QueryMetricOutpu
         "segment": tool_input.segment,
         "from_date": tool_input.from_date,
         "to_date": tool_input.to_date,
+        "limit": tool_input.limit,
     }
     params = {
         key: value for key, value in candidates.items() if key in declared and value is not None
@@ -88,8 +89,9 @@ QUERY_METRIC = ToolDefinition(
     name="query_metric",
     description=(
         "Vraća jednu registrovanu metriku (promet, promet po mjesecima, promet kupca u 60 dana, "
-        "osnovica kupca, zadnja narudžba, prosječni razmak narudžbi). Parametri: metric, "
-        "customer_id?, from_date?, to_date?, segment?"
+        "osnovica kupca, zadnja narudžba, prosječni razmak narudžbi, najprodavaniji artikli, "
+        "promet po kategorijama, najveći kupci, spisak artikala). Parametri: metric, "
+        "customer_id?, from_date?, to_date?, segment?, category_id?, limit?"
     ),
     input_schema=QueryMetricInput,
     output_schema=QueryMetricOutput,

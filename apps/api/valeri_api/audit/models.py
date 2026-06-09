@@ -17,6 +17,7 @@ decision_kind_enum = ENUM(
     "undo",
     "approval",
     "rejection",
+    "kb_capture",
     name="decision_kind",
     create_type=False,
 )
@@ -29,6 +30,7 @@ DECISION_KINDS = (
     "undo",
     "approval",
     "rejection",
+    "kb_capture",
 )
 
 

@@ -75,14 +75,19 @@ class LiteLLMClient:
         settings = get_settings()
         client = OpenAI(base_url=self._base_url, api_key=self._api_key or "unused", timeout=60)
         started = time.monotonic()
+        # Claude Opus 4.8 (the strong tier) rejects the deprecated `temperature`
+        # param with a 400; the cheaper tiers still accept it and benefit from
+        # low-variance sampling. Send it only where it is supported.
+        create_kwargs: dict = {
+            "model": self.model,
+            "messages": self._build_messages(
+                system, user, cache_system=settings.llm_prompt_cache_enabled
+            ),
+        }
+        if self.model != settings.llm_tier2_strong_alias:
+            create_kwargs["temperature"] = 0.2
         try:
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=self._build_messages(
-                    system, user, cache_system=settings.llm_prompt_cache_enabled
-                ),
-                temperature=0.2,
-            )
+            response = client.chat.completions.create(**create_kwargs)
         except OpenAIError as error:
             raise LLMUnavailable(str(error)) from error
 

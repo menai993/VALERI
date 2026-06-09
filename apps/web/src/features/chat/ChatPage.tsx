@@ -6,6 +6,7 @@
  * the GlobalSearch (?q= prefills and sends the question).
  */
 import { useEffect, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { MessageSquarePlus, Send } from "lucide-react"
 import { useSearchParams } from "react-router"
 
@@ -24,6 +25,7 @@ import { ChatMessage, type ChatMessageProps } from "./ChatMessage"
 
 export function ChatPage() {
   const t = useT()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const sessions = useChatSessions()
   const createSession = useCreateChatSession()
@@ -69,6 +71,7 @@ export function ChatPage() {
     let replyText = ""
     let card: ChatMessageProps["card"] = null
     let toolCalls: ChatToolCall[] = []
+    let capture: ChatMessageProps["capture"] = null
 
     const sessionId = await ensureSession()
     await postSSE(`/api/chat/sessions/${sessionId}/messages`, { text }, (event: ChatSSEEvent) => {
@@ -78,6 +81,14 @@ export function ChatPage() {
         card = {
           card_type: String(event.card_type),
           payload: (event.payload ?? {}) as Record<string, unknown>,
+        }
+      }
+      if (event.type === "capture") {
+        capture = {
+          titles: (event.titles ?? []) as string[],
+          autoSaved: Number(event.auto_saved ?? 0),
+          proposed: Number(event.proposed ?? 0),
+          clarifications: Number(event.clarifications ?? 0),
         }
       }
       if (event.type === "done") {
@@ -90,9 +101,13 @@ export function ChatPage() {
 
     setLiveMessages((previous) => [
       ...previous,
-      { role: "assistant", content: replyText, register, toolCalls, card },
+      { role: "assistant", content: replyText, register, toolCalls, card, capture },
     ])
     setStreaming(false)
+    // Capture is committed before the reply closes; refresh the review queue (no race).
+    if (capture) {
+      queryClient.invalidateQueries({ queryKey: ["kb", "pending"] })
+    }
   }
 
   function openSession(sessionId: number) {

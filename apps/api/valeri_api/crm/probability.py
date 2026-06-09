@@ -14,6 +14,9 @@ OPEN_STAGES = ("lead", "qualified", "proposal", "negotiation")
 CLOSED_STAGES = ("won", "lost")
 ALL_STAGES = OPEN_STAGES + CLOSED_STAGES
 
+# Activity kinds (data-model.md: app.activity.kind) — C-CRM2.
+ACTIVITY_KINDS = ("meeting", "call", "offer", "follow_up", "analysis")
+
 
 def stage_probabilities(session: Session) -> dict[str, float]:
     """The stage→default-probability map from rule_config (seeded by migration 0016)."""

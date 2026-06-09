@@ -124,3 +124,88 @@ metrics:
         AND (CAST(:customer_id AS BIGINT) IS NULL OR i.customer_id = :customer_id)
       GROUP BY 1
       ORDER BY 1
+
+  top_articles:
+    description_bs: "Najprodavaniji artikli za period (po prometu i količini), opcionalno po segmentu/kategoriji"
+    description_en: "Top-selling articles for a period (by revenue and quantity), optionally by segment/category"
+    entity: article
+    grain: series
+    params:
+      - { name: from_date, type: date, required: true }
+      - { name: to_date, type: date, required: true }
+      - { name: segment, type: string, required: false }
+      - { name: category_id, type: integer, required: false }
+      - { name: limit, type: integer, required: false }
+    sql: |
+      SELECT a.id AS article_id, a.code, a.name,
+             COALESCE(SUM(l.line_total), 0) AS revenue,
+             COALESCE(SUM(l.qty), 0) AS qty
+      FROM core.invoice_line l
+      JOIN core.invoice i ON i.id = l.invoice_id
+      JOIN core.article a ON a.id = l.article_id
+      JOIN core.customer c ON c.id = i.customer_id
+      WHERE i.date > :from_date AND i.date <= :to_date
+        AND (CAST(:segment AS TEXT) IS NULL OR c.segment = :segment)
+        AND (CAST(:category_id AS BIGINT) IS NULL OR a.category_id = :category_id)
+      GROUP BY a.id, a.code, a.name
+      ORDER BY revenue DESC, a.id
+      LIMIT COALESCE(:limit, 10)
+
+  category_sales:
+    description_bs: "Promet po kategorijama za period (serija), opcionalno po segmentu"
+    description_en: "Sales by category for a period (series), optionally by segment"
+    entity: company
+    grain: series
+    params:
+      - { name: from_date, type: date, required: true }
+      - { name: to_date, type: date, required: true }
+      - { name: segment, type: string, required: false }
+    sql: |
+      SELECT a.category_id, cat.name AS category,
+             COALESCE(SUM(l.line_total), 0) AS revenue
+      FROM core.invoice_line l
+      JOIN core.invoice i ON i.id = l.invoice_id
+      JOIN core.article a ON a.id = l.article_id
+      JOIN core.category cat ON cat.id = a.category_id
+      JOIN core.customer c ON c.id = i.customer_id
+      WHERE i.date > :from_date AND i.date <= :to_date
+        AND (CAST(:segment AS TEXT) IS NULL OR c.segment = :segment)
+      GROUP BY a.category_id, cat.name
+      ORDER BY revenue DESC, a.category_id
+
+  top_customers:
+    description_bs: "Kupci s najvećim prometom za period, opcionalno po segmentu"
+    description_en: "Customers with the highest turnover for a period, optionally by segment"
+    entity: customer
+    grain: series
+    params:
+      - { name: from_date, type: date, required: true }
+      - { name: to_date, type: date, required: true }
+      - { name: segment, type: string, required: false }
+      - { name: limit, type: integer, required: false }
+    sql: |
+      SELECT c.id AS customer_id, c.name AS customer_name,
+             COALESCE(SUM(l.line_total), 0) AS revenue
+      FROM core.invoice_line l
+      JOIN core.invoice i ON i.id = l.invoice_id
+      JOIN core.customer c ON c.id = i.customer_id
+      WHERE i.date > :from_date AND i.date <= :to_date
+        AND (CAST(:segment AS TEXT) IS NULL OR c.segment = :segment)
+      GROUP BY c.id, c.name
+      ORDER BY revenue DESC, c.id
+      LIMIT COALESCE(:limit, 10)
+
+  article_catalog:
+    description_bs: "Spisak aktivnih artikala s kategorijom, opcionalno po kategoriji"
+    description_en: "List of active articles with their category, optionally filtered by category"
+    entity: article
+    grain: series
+    params:
+      - { name: category_id, type: integer, required: false }
+    sql: |
+      SELECT a.id AS article_id, a.code, a.name, cat.name AS category
+      FROM core.article a
+      LEFT JOIN core.category cat ON cat.id = a.category_id
+      WHERE a.active = true
+        AND (CAST(:category_id AS BIGINT) IS NULL OR a.category_id = :category_id)
+      ORDER BY a.code

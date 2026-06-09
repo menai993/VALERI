@@ -26,12 +26,26 @@ def classify_intent(
     masked_text: str,
     masked_history: list[str] | None = None,
     client: LLMClient | None = None,
+    user_role: str = "owner",
 ) -> IntentClassification:
-    """Classify one (already masked) user message. Returns HELP_FALLBACK on failure."""
+    """Classify one (already masked) user message. Returns HELP_FALLBACK on failure.
+
+    The available metrics are injected from the capability catalog (RBAC-filtered by
+    `user_role`), so a newly registered metric is known to the router without a
+    prompt edit (CSA: capabilities are data).
+    """
+    from valeri_api.semantic.capabilities import list_capabilities
+
+    available_metrics = [
+        {"naziv": cap.name, "opis": cap.description, "parametri": cap.params}
+        for cap in list_capabilities(session, user_role)
+        if cap.kind == "metric"
+    ]
     payload = {
         "danas": str(datetime.date.today()),
         "poruka": masked_text,
         "prethodne_poruke": masked_history or [],
+        "dostupne_metrike": available_metrics,
     }
 
     try:

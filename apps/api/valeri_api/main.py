@@ -3,18 +3,22 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from valeri_api.api.admin_metrics import router as admin_metrics_router
 from valeri_api.api.approvals import router as approvals_router
 from valeri_api.api.articles import router as articles_router
 from valeri_api.api.auth import router as auth_router
+from valeri_api.api.capabilities import router as capabilities_router
 from valeri_api.api.chat import router as chat_router
 from valeri_api.api.customers import router as customers_router
 from valeri_api.api.dashboard import router as dashboard_router
 from valeri_api.api.health import router as health_router
 from valeri_api.api.ingest import router as ingest_router
 from valeri_api.api.investigations import router as investigations_router
+from valeri_api.api.kb import router as kb_router
 from valeri_api.api.metrics import router as metrics_router
 from valeri_api.api.opportunities import router as opportunities_router
 from valeri_api.api.reports import router as reports_router
+from valeri_api.api.reps import router as reps_router
 from valeri_api.api.rules import router as rules_router
 from valeri_api.api.settings import router as settings_router
 from valeri_api.api.signals import router as signals_router
@@ -42,6 +46,10 @@ def create_app() -> FastAPI:
     application.include_router(rules_router, prefix="/api")
     application.include_router(investigations_router, prefix="/api")
     application.include_router(opportunities_router, prefix="/api")
+    application.include_router(reps_router, prefix="/api")
+    application.include_router(kb_router, prefix="/api")
+    application.include_router(admin_metrics_router, prefix="/api")
+    application.include_router(capabilities_router, prefix="/api")
 
     @application.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:

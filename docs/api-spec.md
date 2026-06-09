@@ -103,3 +103,13 @@ FastAPI, JSON over HTTPS, SSE for streaming. All endpoints are RBAC-checked. Thi
 - `GET/PATCH /settings/autonomy` → the auto-vs-confirm boundary
 - `GET/PATCH /settings/llm` → tier model IDs, escalation threshold, provider (hosted Claude), masking on/off (default on, cannot be disabled in prod)
 - `GET/POST/PATCH /settings/users` (admin) → RBAC user management
+
+## Admin — derived-data control (admin only)
+
+Operational control over the derived-metrics pipeline (admin role only, like `/ingest`). Numbers
+from SQL; no LLM in this path; recompute/scan refresh *derived* data from unchanged inputs, so they
+are not config changes and write no `app.decision`.
+
+- `GET /admin/metrics/status` → per-table row counts + freshness: `{customer_metrics:{rows,computed_at}, cust_article_cadence:{rows}, segment_basket:{rows}, client_expectation:{rows}, signals:{rows,last_scan_at}, tasks:{rows}}`
+- `POST /admin/metrics/recompute` → run `recompute_all` (synchronous, no LLM) → `{rows:{"core.customer_metrics":N,...}, as_of}`
+- `POST /admin/scan` → run detection rules → signals only (`create_tasks=false`, no LLM/cost) → `{inserted, suppressed, as_of}`

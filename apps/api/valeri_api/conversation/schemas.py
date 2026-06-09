@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Register = Literal["analiza", "preporuka", "akcija"]
 
-INTENTS = ("question", "feedback_config", "investigation", "action", "help")
+INTENTS = ("question", "analysis", "feedback_config", "investigation", "action", "help")
 
 # The tools the intent router may pick from (must match tools/catalog.py).
 ROUTABLE_TOOLS = (
@@ -20,16 +20,18 @@ ROUTABLE_TOOLS = (
     "list_signals",
     "explain_signal",
     "get_customer_360",
+    "get_client_knowledge",
     "create_task_draft",
     "propose_rule_change",
     "start_investigation",
+    "describe_capabilities",
 )
 
 
 class IntentClassification(BaseModel):
     """The Tier-1 router's output: what the user wants and which tool serves it."""
 
-    intent: Literal["question", "feedback_config", "investigation", "action", "help"]
+    intent: Literal["question", "analysis", "feedback_config", "investigation", "action", "help"]
     tool: (
         Literal[
             "query_metric",
@@ -37,9 +39,11 @@ class IntentClassification(BaseModel):
             "list_signals",
             "explain_signal",
             "get_customer_360",
+            "get_client_knowledge",
             "create_task_draft",
             "propose_rule_change",
             "start_investigation",
+            "describe_capabilities",
         ]
         | None
     ) = None
@@ -56,13 +60,22 @@ class ChatAnswer(BaseModel):
     register: Register
 
 
+class ChatAgentAnswer(BaseModel):
+    """A multi-step analysis synthesis — a conclusion, so it carries confidence
+    (Principle 3) and feeds the M12 low-confidence cascade."""
+
+    text: str = Field(min_length=10)
+    register: Register
+    confidence: float = Field(ge=0, le=1)
+
+
 # ── SSE events ────────────────────────────────────────────────────────────────
 
 
 class SSEEvent(BaseModel):
     """One server-sent event of the chat stream."""
 
-    type: Literal["tool_call", "register", "token", "card", "done", "error"]
+    type: Literal["tool_call", "register", "token", "card", "capture", "done", "error"]
     data: dict[str, Any] = {}
 
 

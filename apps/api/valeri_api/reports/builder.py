@@ -127,6 +127,20 @@ def build_weekly_report(
         dict(r) for r in session.execute(text(queries["pending_drafts"]), params).mappings()
     ]
 
+    # C-CRM2 inputs: opportunity-source attribution + the revenue-vs-plan forecast.
+    opp_sources = [
+        dict(r) for r in session.execute(text(queries["opportunity_source"]), params).mappings()
+    ]
+    opp_stats = dict(session.execute(text(queries["opportunity_stats"]), params).mappings().one())
+
+    # CI2: commercial events captured into the KB this week.
+    captured_events = [
+        dict(r) for r in session.execute(text(queries["captured_events"]), params).mappings()
+    ]
+    captured_event_stats = dict(
+        session.execute(text(queries["captured_event_stats"]), params).mappings().one()
+    )
+
     narration_active = client is not None or get_settings().llm_narration_enabled
 
     sections = [
@@ -136,6 +150,11 @@ def build_weekly_report(
         _sleeping_section(session, sleeping, narration_active, client),
         _tasks_section(session, task_stats, top_tasks, narration_active, client),
         _suppressed_section(session, week_start, week_end),
+        _opportunity_source_section(session, opp_sources, opp_stats, narration_active, client),
+        _revenue_plan_section(session, week_end, narration_active, client),
+        _captured_events_section(
+            session, captured_events, captured_event_stats, narration_active, client
+        ),
         _drafts_section(pending_drafts),
     ]
 
@@ -459,6 +478,117 @@ def _suppressed_section(
     )
 
 
+# Opportunity-source rows carry no customer identity (source/counts/values only) —
+# nothing to mask; the prompt receives finished SQL numbers.
+_OPP_SOURCE_PROMPT_FIELDS = ("source", "count", "value", "weighted_value")
+
+# Captured-event rows: kind/summary/value reach the prompt; the customer becomes a
+# pseudonym (+segment) via _mask_items — never the real name (CI2).
+_CAPTURED_EVENT_PROMPT_FIELDS = ("kind", "summary", "value")
+
+
+def _opportunity_source_section(
+    session: Session,
+    sources: list[dict[str, Any]],
+    stats: dict[str, Any],
+    narration_active: bool,
+    client: LLMClient | None,
+) -> dict[str, Any]:
+    """⑦ Prilike po izvoru — opportunity-source attribution + average value (C-CRM2)."""
+    data = {"items": jsonable(sources), "stats": jsonable(stats)}
+    if not sources:
+        return _section(
+            "prilike_po_izvoru",
+            "Prilike po izvoru",
+            "analiza",
+            "Nema evidentiranih prilika za ovaj period.",
+            "template",
+            data,
+        )
+    masked_payload = {
+        "sekcija": "Prilike po izvoru i prosječna vrijednost prilike",
+        "izvori": [{f: row[f] for f in _OPP_SOURCE_PROMPT_FIELDS} for row in jsonable(sources)],
+        "prosjecna_vrijednost": jsonable(stats)["avg_value"],
+        "ukupno_prilika": jsonable(stats)["total_count"],
+    }
+    narrative, source = _narrate_or_template(
+        session,
+        masked_payload,
+        MaskingContext(),  # no customer identity in this section
+        instruction="Napiši kratak narativ o prilikama po izvoru i prosječnoj vrijednosti prilike.",
+        template=_template_opportunity_sources(sources, stats),
+        narration_active=narration_active,
+        client=client,
+    )
+    return _section("prilike_po_izvoru", "Prilike po izvoru", "analiza", narrative, source, data)
+
+
+def _revenue_plan_section(
+    session: Session,
+    week_end: datetime.date,
+    narration_active: bool,
+    client: LLMClient | None,
+) -> dict[str, Any]:
+    """⑧ Prihod vs plan — revenue-vs-plan + run-rate forecast (C-CRM2)."""
+    from valeri_api.crm.forecast import revenue_forecast
+
+    forecast = revenue_forecast(session, week_end).model_dump(mode="json")
+    masked_payload = {
+        "sekcija": "Prihod naspram plana i projekcija",
+        "podaci": forecast,
+    }
+    narrative, source = _narrate_or_template(
+        session,
+        masked_payload,
+        MaskingContext(),  # company-level figures only, no identity
+        instruction="Napiši kratak narativ o prihodu naspram plana i projekciji za mjesec.",
+        template=_template_revenue_plan(forecast),
+        narration_active=narration_active,
+        client=client,
+    )
+    return _section("prihod_vs_plan", "Prihod vs plan", "analiza", narrative, source, forecast)
+
+
+def _captured_events_section(
+    session: Session,
+    items: list[dict[str, Any]],
+    stats: dict[str, Any],
+    narration_active: bool,
+    client: LLMClient | None,
+) -> dict[str, Any]:
+    """⑨ Zabilježeni događaji — deals/events captured into the KB this week (CI2, analiza)."""
+    data = {"items": jsonable(items), "stats": jsonable(stats)}
+    if not items:
+        return _section(
+            "zabiljezeni_dogadjaji",
+            "Zabilježeni događaji",
+            "analiza",
+            "Nema zabilježenih poslovnih događaja za ovu sedmicu.",
+            "template",
+            data,
+        )
+    context = MaskingContext()
+    masked_payload = {
+        "sekcija": "Zabilježeni poslovni događaji (ugovori, sastanci, žalbe)",
+        "stavke": _mask_items(items, _CAPTURED_EVENT_PROMPT_FIELDS, context),
+        "broj_dogadjaja": jsonable(stats)["n_events"],
+        "vrijednost_ugovora": jsonable(stats)["deal_value"],
+    }
+    narrative, source = _narrate_or_template(
+        session,
+        masked_payload,
+        context,
+        instruction="Napiši kratak narativ o poslovnim događajima (npr. ugovorima) "
+        "zabilježenim ove sedmice.",
+        template=_template_captured_events(items, stats),
+        narration_active=narration_active,
+        client=client,
+    )
+    return _section(
+        "zabiljezeni_dogadjaji", "Zabilježeni događaji", "analiza", narrative, source, data
+    )
+
+
 def _drafts_section(items: list[dict[str, Any]]) -> dict[str, Any]:
     """⑦ Prijedlozi poruka — customer-facing drafts awaiting approval (akcija)."""
     rows = [
@@ -540,4 +670,49 @@ def _template_tasks(stats: dict[str, Any], items: list[dict[str, Any]]) -> str:
     body = header
     if lines:
         body += "\nNajvažniji zadaci:\n" + "\n".join(lines)
+    return f"{body}\n\n{FOOTER}"
+
+
+def _template_opportunity_sources(sources: list[dict[str, Any]], stats: dict[str, Any]) -> str:
+    stats = jsonable(stats)
+    header = (
+        f"Ukupno prilika: {stats['total_count']}, "
+        f"prosječna vrijednost prilike {stats['avg_value']} KM."
+    )
+    lines = [
+        f"- {row['source']}: {row['count']} prilika, "
+        f"vrijednost {row['value']} KM (ponderisano {row['weighted_value']} KM)"
+        for row in jsonable(sources)
+    ]
+    return f"{header}\nPo izvoru:\n" + "\n".join(lines) + f"\n\n{FOOTER}"
+
+
+def _template_captured_events(items: list[dict[str, Any]], stats: dict[str, Any]) -> str:
+    stats = jsonable(stats)
+    header = (
+        f"Zabilježeno {stats['n_events']} događaja kod {stats['n_customers']} kupaca; "
+        f"vrijednost ugovora {stats['deal_value']} KM."
+    )
+    lines = [
+        f"- {row['kind']}: {row['summary']}"
+        + (f" ({row['value']} KM)" if row.get("value") is not None else "")
+        for row in jsonable(items)
+    ]
+    return f"{header}\n" + "\n".join(lines) + f"\n\n{FOOTER}"
+
+
+def _template_revenue_plan(forecast: dict[str, Any]) -> str:
+    target = forecast["target"]
+    if target is None:
+        plan_line = "Plan za ovaj mjesec nije postavljen."
+    else:
+        plan_line = (
+            f"Plan: {target} KM; ostvareno do sada: {forecast['actual_mtd']} KM "
+            f"(odstupanje {forecast['variance']} KM)."
+        )
+    body = (
+        f"{plan_line} Projekcija za kraj mjeseca (run-rate): "
+        f"{forecast['forecast']} KM, na osnovu {forecast['days_elapsed']} od "
+        f"{forecast['days_in_month']} dana."
+    )
     return f"{body}\n\n{FOOTER}"

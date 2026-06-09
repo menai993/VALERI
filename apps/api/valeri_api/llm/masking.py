@@ -84,11 +84,19 @@ def _scrub(value: Any) -> Any:
 
 
 def rehydrate(text: str, context: MaskingContext) -> str:
-    """Replace pseudonyms with real names — for human-facing output only."""
+    """Replace pseudonyms with real names — for human-facing output only.
+
+    The model often inflects the pseudonym in Bosnian ("Kupac-ab12cd" → "Kupca-…",
+    "Kupcu-…"), so match on the stable hash suffix with any "Kup…-" prefix; otherwise
+    a declined form would leak the pseudonym to the user.
+    """
     result = text
     for alias, real_name in context.pseudonyms.items():
-        if real_name:
-            result = result.replace(alias, real_name)
+        if not real_name:
+            continue
+        _, _, digest = alias.partition("-")
+        pattern = re.compile(rf"\bKup\w*-{re.escape(digest)}")
+        result = pattern.sub(lambda _match: real_name, result)
     return result
 
 
@@ -196,11 +204,16 @@ def mask_customer_fields(payload: Any, context: MaskingContext) -> Any:
     if isinstance(payload, dict):
         masked = {}
         customer_id = payload.get("customer_id")
+        # KB relationships carry the related customer as (other_customer_id, other_name);
+        # mask that name too so no raw customer identity reaches a prompt.
+        other_id = payload.get("other_customer_id")
         for key, value in payload.items():
             if key.lower() in _FORBIDDEN_KEYS:
                 continue
             if key == "customer_name" and customer_id is not None and value:
                 masked[key] = context.register_customer(customer_id, str(value))
+            elif key == "other_name" and other_id is not None and value:
+                masked[key] = context.register_customer(other_id, str(value))
             else:
                 masked[key] = mask_customer_fields(value, context)
         return masked

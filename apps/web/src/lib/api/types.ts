@@ -16,6 +16,34 @@ export interface ApiError {
   error: { code: string; message: string; details?: Record<string, unknown> }
 }
 
+// ── admin: derived-metrics control (admin-recompute-panel) ─────────────────────
+
+export interface TableStat {
+  rows: number
+  computed_at?: string | null
+  last_scan_at?: string | null
+}
+
+export interface MetricsStatus {
+  customer_metrics: TableStat
+  cust_article_cadence: TableStat
+  segment_basket: TableStat
+  client_expectation: TableStat
+  signals: TableStat
+  tasks: TableStat
+}
+
+export interface RecomputeResult {
+  rows: Record<string, number>
+  as_of: string
+}
+
+export interface ScanResult {
+  inserted: number
+  suppressed: number
+  as_of: string
+}
+
 // ── auth ──────────────────────────────────────────────────────────────────────
 
 export interface User {
@@ -27,6 +55,107 @@ export interface User {
   preferred_language: string
   created_at: string
 }
+
+export interface UserCreate {
+  name: string
+  email: string
+  role: Role
+  password: string
+  sales_rep_id?: number | null
+  preferred_language?: string
+}
+
+export interface UserUpdate {
+  name?: string
+  role?: Role
+  password?: string
+  sales_rep_id?: number | null
+  preferred_language?: string
+}
+
+export interface RuleConfigChange {
+  rule: string
+  param: string
+  value: unknown
+}
+
+// ── data ingest (M2 + data-ingest-ui) ─────────────────────────────────────────
+
+export interface ImportResult {
+  import_id: number
+}
+
+export interface EntityStats {
+  created: number
+  updated: number
+  unchanged: number
+}
+export interface LineStats {
+  created: number
+  replaced: number
+  unchanged: number
+}
+export interface ImportStats {
+  kupci: EntityStats
+  artikli: EntityStats
+  fakture: EntityStats
+  stavke: LineStats
+}
+
+export interface DuplicateCode {
+  code: string
+  names: string[]
+}
+export interface RenamedArticle {
+  code: string
+  old_name: string
+  new_name: string
+}
+export interface CodeSwapCandidate {
+  old_code: string
+  new_code: string
+  name: string
+  already_mapped: boolean
+}
+export interface MissingSegment {
+  customer_code: string
+  name: string
+}
+export interface OrphanLine {
+  row_no: number
+  broj_fakture: string | null
+  sifra_artikla: string | null
+  reason: string
+}
+export interface QualityReport {
+  duplicate_customer_codes: DuplicateCode[]
+  duplicate_article_codes: DuplicateCode[]
+  renamed_articles: RenamedArticle[]
+  code_swap_candidates: CodeSwapCandidate[]
+  missing_segments: MissingSegment[]
+  orphan_lines: OrphanLine[]
+}
+
+export interface ImportReport {
+  import_id: number
+  status: string
+  source: string
+  started_at: string
+  finished_at: string | null
+  stats: ImportStats | null
+  quality: QualityReport | null
+}
+
+export interface ImportRunSummary {
+  import_id: number
+  source: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  stats: ImportStats | null
+}
+
+export type IngestFileKey = "kupci" | "artikli" | "fakture" | "stavke"
 
 // ── envelope ──────────────────────────────────────────────────────────────────
 
@@ -129,10 +258,11 @@ export interface DashboardResponse {
   ai_insights: InsightRow[]
   customers_at_risk: AtRiskRow[]
   lost_articles: LostArticleRow[]
-  rep_activity: null
+  rep_activity: RepActivityBlock | null // C-CRM2: Aktivnosti komercijalista (null until logged)
   owner_report_summary: OwnerReportSummary | null
   recently_suppressed: RecentlySuppressedRow[]
   opportunities: OpportunitySummary | null // C-CRM1: the Prilike block (null until used)
+  revenue_forecast: RevenueForecast | null // C-CRM2: revenue-vs-plan (null until a target is set)
 }
 
 // ── customers ─────────────────────────────────────────────────────────────────
@@ -438,6 +568,156 @@ export interface OpportunitySummary {
     probability: string | null
     weighted_value: string
   }[]
+}
+
+// ── rep activity + forecasting (C-CRM2) ───────────────────────────────────────
+
+export type ActivityKind = "meeting" | "call" | "offer" | "follow_up" | "analysis"
+
+/** One rep's activity rollup for the month: counts by kind + completion (all SQL). */
+export interface RepActivityRow {
+  sales_rep_id: number
+  name: string | null
+  total: number
+  done: number
+  completion: string // done / total, "0.0000" when none
+  by_kind: Record<string, number>
+}
+
+export interface RepActivityBlock {
+  as_of: string
+  reps: RepActivityRow[]
+}
+
+/** Revenue-vs-plan + a simple run-rate forecast for the current month (SQL/Python). */
+export interface RevenueForecast {
+  period: string // 'YYYY-MM'
+  actual_mtd: string // SUM(invoice.total) this month
+  target: string | null // revenue_target for the period (null if unset)
+  variance: string | null // actual − target (null if no target)
+  forecast: string // actual_mtd / days_elapsed × days_in_month
+  days_elapsed: number
+  days_in_month: number
+}
+
+export interface ActivityRead {
+  id: number
+  sales_rep_id: number
+  customer_id: number | null
+  kind: ActivityKind
+  done: boolean
+  at: string
+}
+
+// ── knowledge base / Client Intelligence (CI1) ────────────────────────────────
+
+export type FactSource = "data" | "inferred" | "stated"
+export type KbStatus = "proposed" | "active" | "superseded" | "rejected"
+export type KbItemType = "fact" | "event"
+
+/** A captured fact or commercial event (carries the AI envelope). */
+export interface KbItem {
+  item_type: KbItemType
+  id: number
+  customer_id: number | null
+  customer_name: string | null
+  mentioned_name: string | null
+  title: string
+  detail: Record<string, unknown> | null
+  register: Register
+  source: FactSource
+  confidence: string
+  conf_band: ConfBand
+  status: KbStatus
+  evidence_text: string | null
+  source_message_id: number | null
+  created_at: string
+}
+
+/** A captured customer↔customer relationship (a suggested link until confirmed). */
+export interface KbRelationship {
+  item_type: "relationship"
+  id: number
+  from_customer_id: number
+  from_name: string | null
+  to_customer_id: number
+  to_name: string | null
+  rel_type: string
+  register: Register
+  source: FactSource
+  confidence: string
+  conf_band: ConfBand
+  status: KbStatus
+  evidence_text: string | null
+  created_at: string
+}
+
+export type ClarKind = "entity" | "reference" | "merge" | "value" | "conflict" | "new_entity"
+
+export interface KbClarificationOption {
+  label: string
+  action: string
+  customer_id?: number
+}
+
+export interface KbClarification {
+  id: number
+  kind: ClarKind
+  question: string
+  options: KbClarificationOption[]
+  target_record_ref: string
+  status: string
+  created_at: string
+}
+
+export interface KbProfile {
+  customer_id: number
+  summary: string | null
+  decision_maker: string | null
+  preferences: Record<string, unknown> | null
+  updated_at: string
+}
+
+export interface CaptureResponse {
+  auto_saved: (KbItem | KbRelationship)[]
+  proposed: (KbItem | KbRelationship)[]
+  clarifications: KbClarification[]
+}
+
+export interface KbPendingQueue {
+  facts: KbItem[]
+  events: KbItem[]
+  relationships: KbRelationship[]
+  clarifications: KbClarification[]
+}
+
+export interface KbKnowledge {
+  profile: KbProfile | null
+  facts: KbItem[]
+  events: KbItem[]
+  relationships: KbRelationship[]
+}
+
+/** CI2 relationship map (GET /kb/graph) — confirmed nodes + edges only. */
+export interface GraphNode {
+  customer_id: number
+  name: string | null
+  segment: string | null
+  risk_band: ConfBand | null
+}
+
+export interface GraphEdge {
+  from: number
+  to: number
+  rel_type: string
+  source: FactSource
+  confidence: string
+  evidence_message_id: number | null
+}
+
+export interface KbGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
 }
 
 // ── investigations (M13) ──────────────────────────────────────────────────────

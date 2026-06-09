@@ -85,11 +85,14 @@ def build_metric_query(metric_name: str, params: dict[str, Any]) -> tuple[str, d
 
 
 def run_metric(session: Session, metric_name: str, params: dict[str, Any]) -> MetricResult:
-    """Execute a registered metric and return its typed result."""
-    sql, binds = build_metric_query(metric_name, params)
-    result = session.execute(text(sql), binds)
+    """Execute a registered metric (built-in OR an approved overlay metric)."""
+    from valeri_api.semantic.registry import resolve_metric
+
+    definition = resolve_metric(session, metric_name)
+    if definition is None:
+        raise MetricValidationError(f"Unknown metric: {metric_name!r}")
+    binds = _validate_params(definition, params)
+    result = session.execute(text(definition.sql), binds)
     columns = list(result.keys())
     rows = [dict(zip(columns, row, strict=True)) for row in result]
-
-    definition = load_registry()[metric_name]
     return MetricResult(metric=metric_name, grain=definition.grain, rows=rows)

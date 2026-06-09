@@ -14,7 +14,9 @@ from pydantic import BaseModel, ValidationError
 from valeri_api.tools.base import ToolContext, ToolDefinition, ToolError, ToolPermissionError
 from valeri_api.tools.compare_periods import COMPARE_PERIODS
 from valeri_api.tools.create_task_draft import CREATE_TASK_DRAFT
+from valeri_api.tools.describe_capabilities import DESCRIBE_CAPABILITIES
 from valeri_api.tools.explain_signal import EXPLAIN_SIGNAL
+from valeri_api.tools.get_client_knowledge import GET_CLIENT_KNOWLEDGE
 from valeri_api.tools.get_customer_360 import GET_CUSTOMER_360
 from valeri_api.tools.list_signals import LIST_SIGNALS
 from valeri_api.tools.log import log_tool_call
@@ -32,9 +34,11 @@ TOOLS: dict[str, ToolDefinition] = {
         LIST_SIGNALS,
         EXPLAIN_SIGNAL,
         GET_CUSTOMER_360,
+        GET_CLIENT_KNOWLEDGE,
         CREATE_TASK_DRAFT,
         PROPOSE_RULE_CHANGE,
         START_INVESTIGATION,
+        DESCRIBE_CAPABILITIES,
     )
 }
 

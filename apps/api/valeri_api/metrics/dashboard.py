@@ -238,10 +238,11 @@ def assemble_dashboard(
         ai_insights=insight_rows(session),
         customers_at_risk=at_risk_rows(session),
         lost_articles=lost_article_rows(session),
-        rep_activity=None,
+        rep_activity=_rep_activity_block(session, as_of),
         owner_report_summary=owner_report_summary,
         recently_suppressed=recently_suppressed_rows(session),
         opportunities=_opportunities_summary(session),
+        revenue_forecast=_revenue_forecast(session, as_of),
     )
 
 
@@ -254,6 +255,27 @@ def _opportunities_summary(session: Session) -> dict[str, Any] | None:
         return None  # CRM track not in use → honest empty, not fake pipeline data
     # The dashboard is owner/admin/finance only — unrestricted scope.
     return dashboard_summary(session, customer_ids=None).model_dump(mode="json")
+
+
+def _rep_activity_block(session: Session, as_of: datetime.date) -> dict[str, Any] | None:
+    """C-CRM2: the Aktivnosti komercijalista block — None until activity is logged."""
+    from valeri_api.crm.activity import rep_activity_rollup
+
+    has_any = session.execute(text("SELECT EXISTS (SELECT 1 FROM app.activity)")).scalar()
+    if not has_any:
+        return None  # honest empty — never fake rep activity
+    # The dashboard is owner/admin/finance only — all reps (unrestricted).
+    return rep_activity_rollup(session, as_of).model_dump(mode="json")
+
+
+def _revenue_forecast(session: Session, as_of: datetime.date) -> dict[str, Any] | None:
+    """C-CRM2: revenue-vs-plan + run-rate forecast — None until a target is set."""
+    from valeri_api.crm.forecast import revenue_forecast
+
+    has_target = session.execute(text("SELECT EXISTS (SELECT 1 FROM app.revenue_target)")).scalar()
+    if not has_target:
+        return None  # no plan set → honest empty rather than a target-less tile
+    return revenue_forecast(session, as_of).model_dump(mode="json")
 
 
 def resolve_range(range_key: str | None) -> int:

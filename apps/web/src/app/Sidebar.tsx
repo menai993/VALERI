@@ -9,9 +9,11 @@ import {
   FileBarChart,
   Home,
   MessageSquare,
+  NotebookPen,
   Package,
   Plus,
   Settings,
+  Upload,
   Users,
 } from "lucide-react"
 import { NavLink, useNavigate } from "react-router"
@@ -26,6 +28,7 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { data: user } = useMe()
   const isRep = user?.role === "sales_rep"
+  const isAdmin = user?.role === "admin"
 
   // Reps land on tasks; finance/owner/admin see the full nav (RBAC-aware menu).
   const items = [
@@ -35,6 +38,8 @@ export function Sidebar() {
     { to: "/artikli", label: t.nav.artikli, icon: Package },
     { to: "/prilike", label: t.nav.prilike, icon: Briefcase, soon: true },
     ...(isRep ? [] : [{ to: "/ai-report", label: t.nav.ai_report, icon: FileBarChart }]),
+    { to: "/zabiljeske", label: t.nav.zabiljeske, icon: NotebookPen },
+    ...(isAdmin ? [{ to: "/uvoz", label: t.nav.uvoz, icon: Upload }] : []),
     { to: "/postavke", label: t.nav.postavke, icon: Settings },
   ]
 

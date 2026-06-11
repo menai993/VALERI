@@ -23,6 +23,10 @@ os.environ.setdefault("LLM_NARRATION_ENABLED", "false")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("CSRF_ENABLED", "false")
 
+# P3 answer cache is exercised in test_llm_answer_cache.py; off everywhere else so
+# a test sending the same simple_qa prompt twice still calls its fake both times.
+os.environ.setdefault("LLM_ANSWER_CACHE_TTL_SECONDS", "0")
+
 
 @pytest.fixture
 def anyio_backend() -> str:

@@ -195,6 +195,49 @@ export interface OpsStatus {
   alerts: OpsAlert[]
 }
 
+// ── LLM cost (P3): the 'Troškovi AI' admin dashboard ─────────────────────────
+
+export interface LlmUsageGroup {
+  key: string | null
+  cost_usd: string
+  calls: number
+  input_tokens: number
+  output_tokens: number
+}
+
+export interface LlmBudget {
+  period: string
+  limit_usd: string | null
+  alert_pct: number
+  spent_usd: string
+  pct: number | null
+}
+
+export interface LlmUsage {
+  total: { cost_usd: string; input_tokens: number; output_tokens: number; calls: number }
+  groups: LlmUsageGroup[]
+  trend: { day: string; cost_usd: string }[]
+  budget: LlmBudget
+  cost_per_useful_task: { cost_usd: string; useful_tasks: number; value: number | null }
+}
+
+export interface LlmRecentCall {
+  id: number
+  created_at: string
+  model: string
+  tier: string | null
+  feature: string | null
+  user_id: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  cached: boolean
+  batched: boolean
+  cost_usd: string | null
+  latency_ms: number | null
+}
+
+export type LlmUsageGroupBy = "feature" | "model" | "user"
+
 // ── envelope ──────────────────────────────────────────────────────────────────
 
 export interface Envelope {

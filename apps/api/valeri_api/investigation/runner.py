@@ -42,6 +42,10 @@ def _now() -> datetime.datetime:
 # ── create ────────────────────────────────────────────────────────────────────
 
 
+class FeatureCapReached(Exception):
+    """The investigation daily cap is hit — refuse before queueing a run (P3)."""
+
+
 def create_investigation(
     session: Session,
     question: str,
@@ -49,7 +53,16 @@ def create_investigation(
     signal_id: int | None = None,
     trigger: str = "user",
 ) -> Investigation:
-    """Queue a new investigation (the worker picks it up; nothing runs inline)."""
+    """Queue a new investigation (the worker picks it up; nothing runs inline).
+
+    P3: refuses with FeatureCapReached once the investigation daily cap is hit —
+    the most expensive feature can't blow the budget in a single day.
+    """
+    from valeri_api.llm.spend_guard import feature_cap_reached
+
+    if feature_cap_reached(session, "investigation"):
+        raise FeatureCapReached("Dnevni limit istraga je dostignut — pokušajte ponovo sutra.")
+
     investigation = Investigation(
         trigger=trigger,
         question=question,

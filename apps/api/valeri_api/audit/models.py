@@ -52,6 +52,16 @@ class AiLog(Base):
     register: Mapped[str | None] = mapped_column(register_enum)
     tokens: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
+    # P3 cost attribution (additive; the table stays append-only).
+    feature: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[int | None] = mapped_column(BigInteger)
+    tier: Mapped[str | None] = mapped_column(Text)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cached: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    cached_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    batched: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

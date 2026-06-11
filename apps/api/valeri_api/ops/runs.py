@@ -227,4 +227,20 @@ def derive_alerts(session: Session) -> list[dict[str, str]]:
             }
         )
 
+    # P3: month LLM spend at/over the budget's alert_pct (the 'default' row is the
+    # fallback so this fires without per-month admin upkeep).
+    from valeri_api.llm.cost import budget_status
+
+    spend = budget_status(session)
+    if spend["pct"] is not None and spend["pct"] >= spend["alert_pct"]:
+        alerts.append(
+            {
+                "kind": "llm_budget",
+                "message": (
+                    f"Potrošnja LLM-a je na {spend['pct']:.0f}% mjesečnog budžeta "
+                    f"({spend['spent_usd']:.2f} / {spend['limit_usd']:.2f} USD)."
+                ),
+            }
+        )
+
     return alerts

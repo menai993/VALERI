@@ -47,6 +47,10 @@ import type {
   Paginated,
   InboxSummary,
   OpsStatus,
+  LlmUsage,
+  LlmRecentCall,
+  LlmBudget,
+  LlmUsageGroupBy,
   RepActivityBlock,
   RuleConfigChange,
   RuleConfigEntry,
@@ -143,6 +147,38 @@ export function useOpsStatus(enabled = true) {
     queryFn: () => api.get<OpsStatus>("/api/admin/ops/status"),
     enabled,
     retry: false,
+  })
+}
+
+/** P3: LLM cost usage for the 'Troškovi AI' tab (owner/admin; 403 otherwise). */
+export function useLlmUsage(groupBy: LlmUsageGroupBy = "feature", enabled = true) {
+  return useQuery<LlmUsage>({
+    queryKey: ["llmCost", "usage", groupBy],
+    queryFn: () => api.get<LlmUsage>("/api/admin/llm/usage", { group_by: groupBy }),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useLlmRecent(enabled = true) {
+  return useQuery<{ items: LlmRecentCall[] }>({
+    queryKey: ["llmCost", "recent"],
+    queryFn: () => api.get<{ items: LlmRecentCall[] }>("/api/admin/llm/recent", { limit: 10 }),
+    enabled,
+    retry: false,
+  })
+}
+
+export function usePatchLlmBudget() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { limit_usd: string; alert_pct: number }) =>
+      api.patch<LlmBudget>("/api/admin/llm/budget", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["llmCost"] })
+      queryClient.invalidateQueries({ queryKey: ["ops"] })
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
+    },
   })
 }
 

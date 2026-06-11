@@ -1,6 +1,6 @@
 # Spec — P3: LLM cost tracking, budgets & Batch (X1)
 
-**Track:** Improvement Roadmap P3 = plan X1 (`docs/llm-cost.md` is the binding spec) · **Builds on:** M6 gateway (`llm/narration.py` + `llm/structured.py` — the only two places that call the LLM and write `ai_log`), M12 router (`role` already threads through both chokepoints), P1 inbox bell, P2 `ops/runs.py` alert derivation · **Status:** approved
+**Track:** Improvement Roadmap P3 = plan X1 (`docs/llm-cost.md` is the binding spec) · **Builds on:** M6 gateway (`llm/narration.py` + `llm/structured.py` — the only two places that call the LLM and write `ai_log`), M12 router (`role` already threads through both chokepoints), P1 inbox bell, P2 `ops/runs.py` alert derivation · **Status:** implemented
 
 ## 1. Objective
 

@@ -26,6 +26,7 @@ from valeri_api.config import get_settings
 
 # get_llm_client stays imported here: it is the seam tests monkeypatch to keep
 # production code paths off the network (the router honours patched factories).
+from valeri_api.llm.answer_cache import answer_cache
 from valeri_api.llm.client import LLMClient, LLMResponse, LLMUnavailable, get_llm_client
 from valeri_api.llm.masking import collect_allowed_numbers
 from valeri_api.llm.prompts import structured_prompt
@@ -39,6 +40,7 @@ from valeri_api.llm.router.router import (
     load_router_config,
 )
 from valeri_api.llm.schemas import NarrationFailed
+from valeri_api.llm.spend_guard import is_non_essential, non_essential_throttled
 from valeri_api.llm.validators import NarrationInvalid, check_number_contract, parse_structured
 
 logger = logging.getLogger("valeri.llm.structured")
@@ -54,6 +56,7 @@ def narrate_structured[T: BaseModel](
     register: str | None = None,
     text_field: str | None = "text",
     role: str = ROLE_NARRATION,
+    user_id: int | None = None,
 ) -> tuple[T, str, int]:
     """Produce a validated structured output for an already-masked payload.
 
@@ -75,10 +78,56 @@ def narrate_structured[T: BaseModel](
     masked_payload = jsonable(masked_payload)
     allowed_numbers = collect_allowed_numbers(masked_payload)
 
+    # ── P3 throttle (cost lever): defer deferrable roles near the budget cap ──
+    # Chat roles (simple_qa/intent) are never non-essential, so they pass through;
+    # scheduled narration/drafts/the auditor fall back to templates (caller catches).
+    if is_non_essential(session, role) and non_essential_throttled(session):
+        raise NarrationFailed(
+            "throttled: LLM spend near budget cap; non-essential role deferred to templates", 0
+        )
+
+    # ── P3 answer cache (cost lever): identical masked question inside the TTL ──
+    # The key is POST-masking, so it can never depend on raw PII (principle 6).
+    cache_user_prompt = structured_prompt(instruction, masked_payload, [])
+    cached = answer_cache.get(role, system_prompt, cache_user_prompt)
+    if cached is not None:
+        parsed_cached = parse_structured(cached.text, schema)  # was validated when cached
+        return parsed_cached, cached.model, 0  # 0 attempts ⇒ cache hit, no ai_log row
+
     # ── routing (M12): the role picks the tier; masking already happened upstream ──
     router_config = load_router_config(session)
     route = initial_route(session, role, override=client)
     llm_client = client_for_route(route, override=client, factory=lambda: get_llm_client())
+
+    def _log(
+        model_name: str,
+        output: dict[str, Any],
+        *,
+        response: LLMResponse | None = None,
+        confidence: Any = None,
+        register_value: str | None = None,
+    ) -> None:
+        """One ai_log row with P3 cost attribution bound (feature/tier/user/tokens).
+
+        `route` is read at call time, so a mid-loop cascade escalation is reflected.
+        """
+        log_ai_call(
+            session,
+            model=model_name,
+            masked_input=masked_payload,
+            output=output,
+            confidence=confidence,
+            register=register_value,
+            tokens=getattr(response, "tokens", None),
+            latency_ms=getattr(response, "latency_ms", None),
+            feature=role,
+            user_id=user_id,
+            tier=route.chosen_tier,
+            input_tokens=getattr(response, "input_tokens", None),
+            output_tokens=getattr(response, "output_tokens", None),
+            cached_input_tokens=getattr(response, "cached_input_tokens", None),
+            batched=getattr(response, "batched", False),
+        )
 
     # A valid-but-low-confidence result, kept as fallback if escalation yields nothing better.
     fallback: tuple[T, LLMResponse, int] | None = None
@@ -94,11 +143,9 @@ def narrate_structured[T: BaseModel](
             try:
                 response = llm_client.complete(system_prompt, user_prompt)
             except LLMUnavailable as error:
-                log_ai_call(
-                    session,
-                    model=getattr(llm_client, "model", "unknown"),
-                    masked_input=masked_payload,
-                    output={"error": "gateway_unavailable", "detail": str(error)},
+                _log(
+                    getattr(llm_client, "model", "unknown"),
+                    {"error": "gateway_unavailable", "detail": str(error)},
                 )
                 raise NarrationFailed(f"LLM gateway unavailable: {error}", attempt) from error
 
@@ -107,13 +154,10 @@ def narrate_structured[T: BaseModel](
                 parsed = parse_structured(response.text, schema)
             except NarrationInvalid as invalid:
                 errors = invalid.errors
-                log_ai_call(
-                    session,
-                    model=response.model,
-                    masked_input=masked_payload,
-                    output={"rejected": response.text, "errors": errors},
-                    tokens=response.tokens,
-                    latency_ms=response.latency_ms,
+                _log(
+                    response.model,
+                    {"rejected": response.text, "errors": errors},
+                    response=response,
                 )
                 logger.warning(
                     "structured output rejected (schema), attempt %d: %s", attempt, errors
@@ -132,17 +176,14 @@ def narrate_structured[T: BaseModel](
                     + ", ".join(violations)
                     + ". Smiješ koristiti isključivo date brojeve, doslovno."
                 ]
-                log_ai_call(
-                    session,
-                    model=response.model,
-                    masked_input=masked_payload,
-                    output={
+                _log(
+                    response.model,
+                    {
                         "rejected": parsed.model_dump(),
                         "errors": errors,
                         "number_violations": violations,
                     },
-                    tokens=response.tokens,
-                    latency_ms=response.latency_ms,
+                    response=response,
                 )
                 logger.warning(
                     "structured output rejected (numbers), attempt %d: %s", attempt, violations
@@ -173,16 +214,14 @@ def narrate_structured[T: BaseModel](
                     break  # → tier loop: retry on the stronger tier
 
             # ── accepted ─────────────────────────────────────────────────────
-            log_ai_call(
-                session,
-                model=response.model,
-                masked_input=masked_payload,
-                output=parsed.model_dump(),
+            _log(
+                response.model,
+                parsed.model_dump(),
+                response=response,
                 confidence=confidence,
-                register=getattr(parsed, "register", None) or register,
-                tokens=response.tokens,
-                latency_ms=response.latency_ms,
+                register_value=getattr(parsed, "register", None) or register,
             )
+            answer_cache.put(role, system_prompt, cache_user_prompt, response)
             return parsed, response.model, attempt
 
         if escalated_mid_loop:
@@ -199,15 +238,12 @@ def narrate_structured[T: BaseModel](
         # No escalation left: a valid low-confidence original still beats failing.
         if fallback is not None:
             parsed, response, attempt = fallback
-            log_ai_call(
-                session,
-                model=response.model,
-                masked_input=masked_payload,
-                output=parsed.model_dump(),
+            _log(
+                response.model,
+                parsed.model_dump(),
+                response=response,
                 confidence=getattr(parsed, "confidence", None),
-                register=getattr(parsed, "register", None) or register,
-                tokens=response.tokens,
-                latency_ms=response.latency_ms,
+                register_value=getattr(parsed, "register", None) or register,
             )
             return parsed, response.model, attempt
 

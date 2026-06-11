@@ -43,6 +43,7 @@ def narrate_task(
     segment: str | None,
     client: LLMClient | None = None,
     role: str = ROLE_NARRATION,
+    user_id: int | None = None,
 ) -> NarrationResult:
     """Produce a validated Bosnian narration for one signal.
 
@@ -67,6 +68,33 @@ def narrate_task(
     route = initial_route(session, role, override=client)
     llm_client = client_for_route(route, override=client, factory=lambda: get_llm_client())
 
+    def _log(
+        model_name: str,
+        output: dict[str, Any],
+        *,
+        response: LLMResponse | None = None,
+        confidence: Any = None,
+        register_value: str | None = None,
+    ) -> None:
+        """One ai_log row with P3 cost attribution bound (feature/tier/user/tokens)."""
+        log_ai_call(
+            session,
+            model=model_name,
+            masked_input=masked_payload,
+            output=output,
+            confidence=confidence,
+            register=register_value,
+            tokens=getattr(response, "tokens", None),
+            latency_ms=getattr(response, "latency_ms", None),
+            feature=role,
+            user_id=user_id,
+            tier=route.chosen_tier,
+            input_tokens=getattr(response, "input_tokens", None),
+            output_tokens=getattr(response, "output_tokens", None),
+            cached_input_tokens=getattr(response, "cached_input_tokens", None),
+            batched=getattr(response, "batched", False),
+        )
+
     # A valid-but-low-confidence narration kept as fallback if escalation yields nothing better.
     fallback: tuple[TaskNarration, LLMResponse, int] | None = None
 
@@ -85,11 +113,9 @@ def narrate_task(
             try:
                 response = llm_client.complete(SYSTEM_PROMPT, user_prompt)
             except LLMUnavailable as error:
-                log_ai_call(
-                    session,
-                    model=getattr(llm_client, "model", "unknown"),
-                    masked_input=masked_payload,
-                    output={"error": "gateway_unavailable", "detail": str(error)},
+                _log(
+                    getattr(llm_client, "model", "unknown"),
+                    {"error": "gateway_unavailable", "detail": str(error)},
                 )
                 raise NarrationFailed(f"LLM gateway unavailable: {error}", attempt) from error
 
@@ -98,13 +124,10 @@ def narrate_task(
                 narration = parse_narration(response.text)
             except NarrationInvalid as invalid:
                 errors = invalid.errors
-                log_ai_call(
-                    session,
-                    model=response.model,
-                    masked_input=masked_payload,
-                    output={"rejected": response.text, "errors": errors},
-                    tokens=response.tokens,
-                    latency_ms=response.latency_ms,
+                _log(
+                    response.model,
+                    {"rejected": response.text, "errors": errors},
+                    response=response,
                 )
                 logger.warning("narration rejected (schema), attempt %d: %s", attempt, errors)
                 continue
@@ -117,17 +140,14 @@ def narrate_task(
                     + ", ".join(violations)
                     + ". Smiješ koristiti isključivo date brojeve, doslovno."
                 ]
-                log_ai_call(
-                    session,
-                    model=response.model,
-                    masked_input=masked_payload,
-                    output={
+                _log(
+                    response.model,
+                    {
                         "rejected": narration.model_dump(),
                         "errors": errors,
                         "number_violations": violations,
                     },
-                    tokens=response.tokens,
-                    latency_ms=response.latency_ms,
+                    response=response,
                 )
                 logger.warning("narration rejected (numbers), attempt %d: %s", attempt, violations)
                 continue
@@ -152,15 +172,12 @@ def narrate_task(
                     break  # → tier loop: retry on the stronger tier
 
             # ── accepted ─────────────────────────────────────────────────────
-            log_ai_call(
-                session,
-                model=response.model,
-                masked_input=masked_payload,
-                output=narration.model_dump(),
+            _log(
+                response.model,
+                narration.model_dump(),
+                response=response,
                 confidence=narration.confidence,
-                register=narration.register,
-                tokens=response.tokens,
-                latency_ms=response.latency_ms,
+                register_value=narration.register,
             )
             return NarrationResult(
                 narration=narration, model=response.model, attempts=attempt, context=context
@@ -180,15 +197,12 @@ def narrate_task(
         # No escalation left: a valid low-confidence narration still beats failing.
         if fallback is not None:
             narration, response, attempt = fallback
-            log_ai_call(
-                session,
-                model=response.model,
-                masked_input=masked_payload,
-                output=narration.model_dump(),
+            _log(
+                response.model,
+                narration.model_dump(),
+                response=response,
                 confidence=narration.confidence,
-                register=narration.register,
-                tokens=response.tokens,
-                latency_ms=response.latency_ms,
+                register_value=narration.register,
             )
             return NarrationResult(
                 narration=narration, model=response.model, attempts=attempt, context=context

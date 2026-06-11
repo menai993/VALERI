@@ -20,6 +20,7 @@ from valeri_api.auth.models import AppUser
 from valeri_api.db import get_session
 from valeri_api.investigation.models import Investigation, InvestigationStep
 from valeri_api.investigation.runner import (
+    FeatureCapReached,
     InvalidInvestigationState,
     InvestigationNotFound,
     create_investigation,
@@ -62,10 +63,19 @@ def create(
     session: Annotated[Session, Depends(get_session)],
     user: Creator,
 ) -> InvestigationCreated:
-    """Queue an investigation; the worker picks it up (202, never blocks)."""
-    investigation = create_investigation(
-        session, body.question, user, signal_id=body.signal_id, trigger="user"
-    )
+    """Queue an investigation; the worker picks it up (202, never blocks).
+
+    P3: refuses with 429 feature_capped when the investigation daily cap is hit.
+    """
+    try:
+        investigation = create_investigation(
+            session, body.question, user, signal_id=body.signal_id, trigger="user"
+        )
+    except FeatureCapReached as capped:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "feature_capped", "message": str(capped)},
+        ) from capped
     session.commit()
     return InvestigationCreated(investigation_id=investigation.id, status=investigation.status)
 

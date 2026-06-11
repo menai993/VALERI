@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # closing without the chip (capture itself keeps running server-side).
     chat_capture_timeout_seconds: float = 5.0
 
+    # ── P3 cost levers ───────────────────────────────────────────────────────
+    # Batch API for non-interactive jobs (weekly cycle) — ~half price, live fallback.
+    llm_batch_enabled: bool = True
+    llm_batch_poll_seconds: float = 5.0
+    llm_batch_timeout_seconds: float = 600.0
+    # Short-TTL answer cache for identical masked questions (simple_qa).
+    llm_answer_cache_ttl_seconds: float = 300.0
+
     # ── DI1a — document object storage (MinIO, S3-compatible) ────────────────
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "valeri"

@@ -280,6 +280,34 @@ is never logged out mid-day.
 
 ---
 
+## 9b. LLM cost: budgets, alerts & levers (P3)
+
+Every LLM call is priced at write time in `audit.ai_log` (`cost_usd` from token
+splits × `app.llm_pricing`; an unpriced model leaves it NULL — never guessed) and
+attributed by `feature` (router role), `tier`, and `user_id`. The **Troškovi AI**
+tab (Postavke, owner/admin) shows spend vs budget, breakdowns by feature/model/
+user, **cost per useful task** (spend ÷ tasks acted on), and the recent expensive
+calls. Admin can edit the budget and prices there; each edit writes a reversible
+`app.decision`.
+
+**Prices** live in `app.llm_pricing` (USD per 1M tokens, keyed by model id and
+tier alias), seeded from current Anthropic pricing — **confirm at docs.claude.com
+and edit the rows when prices change; never hard-code them.** **Budget** lives in
+`app.llm_budget`; the `'default'` row (50 USD / 80%) governs any month without its
+own row, so the alert works without monthly upkeep.
+
+| Lever | Where | Default |
+|---|---|---|
+| Budget alert | inbox bell + `/admin/ops/status` (kind `llm_budget`) | fires at `alert_pct` (80%) of the month budget |
+| Per-feature daily cap | `rule_config` `llm_cost.feature_daily_caps` | `investigation` ≤ 10 runs/day (429 `feature_capped` when hit) |
+| Near-cap throttle | `rule_config` `llm_cost.throttle_pct` (90%) | non-essential roles (`report_narration`, `customer_draft`, `over_suppression_audit`, `kb_summary`) fall back to templates; chat is never throttled |
+| Batch API | `LLM_BATCH_ENABLED` (default true) | the weekly cycle narrates through the Batch API (~half price) with automatic live fallback |
+| Answer cache | `LLM_ANSWER_CACHE_TTL_SECONDS` (default 300) | identical masked `simple_qa` questions answer from cache within the TTL (post-masking key — PII-safe) |
+
+PII masking is never an optimization target — every lever runs after masking.
+
+---
+
 ## 10. Common failures
 
 | Symptom | Likely cause | Action |

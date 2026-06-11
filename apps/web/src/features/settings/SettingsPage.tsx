@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/widgets/CardState"
 import { DataMetricsPanel } from "@/components/widgets/DataMetricsPanel"
 import { DataTable, type Column } from "@/components/widgets/DataTable"
+import { LlmCostPanel } from "@/components/widgets/LlmCostPanel"
 import { OpsStatusPanel } from "@/components/widgets/OpsStatusPanel"
 import { ApiRequestError } from "@/lib/api/client"
 import {
@@ -444,6 +445,7 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="thresholds">{t.settings.tab_thresholds}</TabsTrigger>
           {canSeeData && <TabsTrigger value="data">{t.settings.tab_data}</TabsTrigger>}
+          {canSeeData && <TabsTrigger value="cost">{t.settings.tab_cost}</TabsTrigger>}
           {isAdmin && <TabsTrigger value="users">{t.settings.tab_users}</TabsTrigger>}
           <TabsTrigger value="llm">{t.settings.tab_llm}</TabsTrigger>
         </TabsList>
@@ -457,6 +459,11 @@ export function SettingsPage() {
               <OpsStatusPanel />
               {isAdmin && <DataMetricsPanel />}
             </div>
+          </TabsContent>
+        )}
+        {canSeeData && (
+          <TabsContent value="cost">
+            <LlmCostPanel isAdmin={isAdmin} />
           </TabsContent>
         )}
         {isAdmin && (

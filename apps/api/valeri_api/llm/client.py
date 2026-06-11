@@ -20,6 +20,11 @@ class LLMResponse(BaseModel):
     model: str
     tokens: int | None = None
     latency_ms: int | None = None
+    # P3 cost attribution: the token splits the gateway reported.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    batched: bool = False
 
 
 class LLMClient(Protocol):
@@ -93,11 +98,18 @@ class LiteLLMClient:
 
         latency_ms = int((time.monotonic() - started) * 1000)
         usage = getattr(response, "usage", None)
+        # Cached-prompt tokens live under prompt_tokens_details.cached_tokens
+        # (OpenAI-compatible shape LiteLLM forwards from Anthropic).
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", None) if details is not None else None
         return LLMResponse(
             text=response.choices[0].message.content or "",
             model=response.model or self.model,
             tokens=getattr(usage, "total_tokens", None),
             latency_ms=latency_ms,
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            cached_input_tokens=cached,
         )
 
 

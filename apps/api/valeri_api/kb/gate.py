@@ -20,7 +20,12 @@ from valeri_api.llm.structured import narrate_structured
 logger = logging.getLogger("valeri.kb.gate")
 
 
-def is_relevant(session: Session, masked_text: str, client: LLMClient | None = None) -> bool:
+def is_relevant(
+    session: Session,
+    masked_text: str,
+    client: LLMClient | None = None,
+    user_id: int | None = None,
+) -> bool:
     """True when the (already masked) message asserts something worth capturing."""
     try:
         decision, _, _ = narrate_structured(
@@ -32,6 +37,7 @@ def is_relevant(session: Session, masked_text: str, client: LLMClient | None = N
             client=client,
             text_field=None,  # a yes/no gate renders no user-facing numbers
             role=ROLE_KB_GATE,
+            user_id=user_id,
         )
         return decision.relevant
     except NarrationFailed as failure:

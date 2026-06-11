@@ -32,6 +32,7 @@ def extract_candidates(
     customer_focus: str | None = None,
     message_id: int | None = None,
     client: LLMClient | None = None,
+    user_id: int | None = None,
 ) -> ExtractionResult:
     """Extract facts/events/relationships from one masked utterance.
 
@@ -53,6 +54,7 @@ def extract_candidates(
         client=client,
         text_field=None,  # candidates are structured fields, not narrative numbers
         role=ROLE_KB_EXTRACTION,
+        user_id=user_id,
     )
 
     # Provenance: the candidates before apply (raw_text is the real utterance, on-prem only).

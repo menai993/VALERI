@@ -76,16 +76,29 @@ def scan_job() -> None:
 
 
 def weekly_job() -> None:
-    """The Sunday-night job: scan → tasks → weekly owner report (M7); ledgered (P2)."""
+    """The Sunday-night job: scan → tasks → weekly owner report (M7); ledgered (P2).
+
+    Non-interactive narration goes through the Batch API (~half price, P3) with a
+    live fallback; if month spend is near the cap, non-essential narration self-
+    throttles to templates (recorded in detail.throttled).
+    """
+    from valeri_api.llm.batch import weekly_batch_client
+    from valeri_api.llm.spend_guard import non_essential_throttled
+
     engine = get_engine()
     try:
         with record_job_run("weekly_cycle") as run:
             with Session(engine) as session:
-                scan_result, report = run_weekly_cycle(session)
+                throttled = non_essential_throttled(session)
+                scan_result, report = run_weekly_cycle(session, client=weekly_batch_client())
                 # Telemetry retention happens inside the weekly job (spec D5).
                 pruned = prune_job_runs(session)
                 session.commit()
-            run.detail = {"report_id": report.id, "pruned_job_runs": pruned}
+            run.detail = {
+                "report_id": report.id,
+                "pruned_job_runs": pruned,
+                "throttled": throttled,
+            }
     except Exception:
         logger.exception("weekly cycle failed (rolled back)")
         return

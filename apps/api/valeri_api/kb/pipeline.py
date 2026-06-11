@@ -124,7 +124,7 @@ def run_capture(
     masked_text = mask_for_capture(session, text_in, context)
 
     # ── relevance gate (cost lever) ───────────────────────────────────────────
-    if not is_relevant(session, masked_text, client=client):
+    if not is_relevant(session, masked_text, client=client, user_id=user_id):
         return CaptureResponse()
 
     # ── extraction ────────────────────────────────────────────────────────────
@@ -139,6 +139,7 @@ def run_capture(
             customer_focus=focus_pseudonym,
             message_id=message_id,
             client=client,
+            user_id=user_id,
         )
     except NarrationFailed as failure:
         logger.info("kb extraction failed (%s); nothing captured, audit preserved", failure.reason)
